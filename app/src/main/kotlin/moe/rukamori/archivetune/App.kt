@@ -7,6 +7,7 @@
 
 package moe.rukamori.archivetune
 
+import android.app.Activity
 import android.app.ActivityManager
 import android.app.Application
 import android.content.Context
@@ -51,7 +52,6 @@ import moe.rukamori.archivetune.storage.StorageLocationRepository
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.tidal.TidalInstanceHealthManager
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
-import moe.rukamori.archivetune.repository.SearchDiscoveryRepository
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlaybackCache
 import moe.rukamori.archivetune.ui.screens.settings.ThemePalettes
 import moe.rukamori.archivetune.ui.theme.ThemeSeedPalette
@@ -88,9 +88,6 @@ class App :
     SingletonImageLoader.Factory {
     @Inject
     lateinit var spotifyLibraryRepository: SpotifyLibraryRepository
-
-    @Inject
-    lateinit var searchDiscoveryRepository: SearchDiscoveryRepository
 
     private val applicationScope = CoroutineScope(
         SupervisorJob() + Dispatchers.Main + kotlinx.coroutines.CoroutineExceptionHandler { _, error ->
@@ -137,6 +134,7 @@ class App :
         }
         YtDlpJavaScriptRuntime.initialize(this)
         BotGuardTokenGenerator.initialize(this)
+        registerActivityLifecycleCallbacks(activityLifecycleCallbacks)
 
         moe.rukamori.archivetune.echo.utils.cipher.CipherDeobfuscator.initialize(this)
         PreferenceStore.start(this)
@@ -266,12 +264,6 @@ class App :
 
     private fun initializeDeferredAsync() {
         moe.rukamori.archivetune.utils.SourceRefreshWorker.schedule(this)
-
-        applicationScope.launch(Dispatchers.IO) {
-            runCatching {
-                searchDiscoveryRepository.loadDiscovery(forceRefresh = false)
-            }
-        }
 
         applicationScope.launch(Dispatchers.IO) {
             try {
@@ -404,6 +396,13 @@ class App :
                 .collect { (arl, premium) ->
                     DeezerAudioProvider.setManualArl(arl, premium)
                 }
+        }
+
+        applicationScope.launch(Dispatchers.IO) {
+            dataStore.data
+                .map { it[moe.rukamori.archivetune.constants.DeezerInstancesKey] ?: "" }
+                .distinctUntilChanged()
+                .collect { raw -> moe.rukamori.archivetune.deezer.DeezerInstances.setUserInstances(raw) }
         }
 
         applicationScope.launch(Dispatchers.IO) {
@@ -555,6 +554,43 @@ class App :
     companion object {
         lateinit var instance: App
             private set
+
+        @Volatile
+        var isUiForeground: Boolean = false
+            private set
+
+        private var startedActivityCount = 0
+
+        private val activityLifecycleCallbacks =
+            object : Application.ActivityLifecycleCallbacks {
+                override fun onActivityStarted(activity: Activity) {
+                    startedActivityCount++
+                    if (startedActivityCount == 1) isUiForeground = true
+                }
+
+                override fun onActivityStopped(activity: Activity) {
+                    startedActivityCount = (startedActivityCount - 1).coerceAtLeast(0)
+                    if (startedActivityCount == 0) isUiForeground = false
+                }
+
+                override fun onActivityCreated(
+                    activity: Activity,
+                    savedInstanceState: android.os.Bundle?,
+                ) {
+                }
+
+                override fun onActivitySaveInstanceState(
+                    activity: Activity,
+                    outState: android.os.Bundle,
+                ) {
+                }
+
+                override fun onActivityResumed(activity: Activity) {}
+
+                override fun onActivityPaused(activity: Activity) {}
+
+                override fun onActivityDestroyed(activity: Activity) {}
+            }
 
         fun forgetAccount(
             context: Context,

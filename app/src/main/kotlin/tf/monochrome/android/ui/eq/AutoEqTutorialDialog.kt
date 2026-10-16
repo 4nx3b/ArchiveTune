@@ -95,9 +95,7 @@ fun AutoEqTutorialDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        // Unglassed: the dialog renders inside the glass menu's color scheme,
-        // whose container colors are near-transparent — re-applying the
-        // unglassed scheme lets the surface below draw an opaque container.
+
         UnglassedDialogTheme {
         Surface(
             modifier = Modifier

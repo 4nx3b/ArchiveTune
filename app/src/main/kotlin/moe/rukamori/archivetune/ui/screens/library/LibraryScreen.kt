@@ -40,18 +40,22 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import dev.chrisbanes.haze.hazeSource
-import moe.rukamori.archivetune.ui.screens.HomeAtmosphereBackground
 import moe.rukamori.archivetune.ui.screens.LocalLibraryHazeState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -67,7 +71,6 @@ import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ChipSortTypeKey
-import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.LibraryFilter
 import moe.rukamori.archivetune.constants.ShowSpotifyPlaylistsKey
 import moe.rukamori.archivetune.constants.ShowTagsInLibraryKey
@@ -81,6 +84,8 @@ import androidx.compose.runtime.setValue
 internal val LibraryHeaderContentPadding = 8.dp
 internal val LibraryPullToRefreshIndicatorOffset = 0.dp
 
+val LocalLibraryTitleReveal = staticCompositionLocalOf { mutableStateOf(false) }
+
 @Composable
 fun LibraryScreen(navController: NavController) {
     val defaultFilter by rememberEnumPreference(ChipSortTypeKey, LibraryFilter.LIBRARY)
@@ -89,7 +94,6 @@ fun LibraryScreen(navController: NavController) {
     val allTags by database.allTags().collectAsStateWithLifecycle(initialValue = emptyList())
     val (showTagsInLibrary) = rememberPreference(ShowTagsInLibraryKey, defaultValue = true)
     val (showSpotifyPlaylists) = rememberPreference(ShowSpotifyPlaylistsKey, defaultValue = false)
-    val (disableBlur) = rememberPreference(DisableBlurKey, false)
     var showTagsManagementDialog by rememberSaveable { mutableStateOf(false) }
     val activeSelectedTagIds = if (showTagsInLibrary) selectedTagIds else emptySet()
     val libraryFilters =
@@ -130,16 +134,51 @@ fun LibraryScreen(navController: NavController) {
     }
 
     val libraryHazeState = LocalLibraryHazeState.current
+
+    val libraryTitleReveal = LocalLibraryTitleReveal.current
+    val titleRevealScrollConnection =
+        remember(libraryTitleReveal) {
+
+            var upAccumulator = 0f
+            var downAccumulator = 0f
+            object : NestedScrollConnection {
+                override fun onPreScroll(
+                    available: Offset,
+                    source: NestedScrollSource,
+                ): Offset {
+                    if (source != NestedScrollSource.UserInput) return Offset.Zero
+                    when {
+
+                        available.y < 0f -> {
+                            upAccumulator = 0f
+                            downAccumulator += available.y
+                            if (downAccumulator < -6f) {
+                                libraryTitleReveal.value = false
+                                downAccumulator = 0f
+                            }
+                        }
+
+                        available.y > 0f -> {
+                            downAccumulator = 0f
+                            upAccumulator += available.y
+                            if (upAccumulator > 24f) {
+                                libraryTitleReveal.value = true
+                                upAccumulator = 0f
+                            }
+                        }
+                    }
+                    return Offset.Zero
+                }
+            }
+        }
+
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
                 .let { m -> if (libraryHazeState != null) m.hazeSource(libraryHazeState) else m }
-                .background(MaterialTheme.colorScheme.background),
+                .nestedScroll(titleRevealScrollConnection),
     ) {
-        if (!disableBlur) {
-            HomeAtmosphereBackground()
-        }
 
         Column(
             modifier =
@@ -397,86 +436,6 @@ private fun PlaylistTagFilterChip(
         Text(
             text = label,
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = contentColor,
-        )
-    }
-}
-
-@Composable
-fun ExpressiveTabChip(
-    label: String,
-    iconRes: Int,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-
-    val scale by animateFloatAsState(
-        targetValue =
-            if (isPressed) {
-                0.92f
-            } else if (selected) {
-                1.05f
-            } else {
-                1.0f
-            },
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
-        label = "TabChipScale",
-    )
-
-    val bgColor by animateColorAsState(
-        targetValue =
-            if (selected) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-            },
-        animationSpec = spring(stiffness = Spring.StiffnessMedium),
-        label = "TabChipBgColor",
-    )
-
-    val contentColor by animateColorAsState(
-        targetValue =
-            if (selected) {
-                MaterialTheme.colorScheme.onPrimary
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-        animationSpec = spring(stiffness = Spring.StiffnessMedium),
-        label = "TabChipContentColor",
-    )
-
-    Row(
-        modifier =
-            Modifier
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                }.clip(CircleShape)
-                .background(bgColor)
-                .clickable(
-                    interactionSource = interactionSource,
-                    indication = null,
-                    onClick = onClick,
-                ).padding(horizontal = 18.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center,
-    ) {
-        Icon(
-            painter = painterResource(id = iconRes),
-            contentDescription = label,
-            tint = contentColor,
-            modifier = Modifier.size(20.dp),
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            text = label,
-            style =
-                MaterialTheme.typography.labelLarge.copy(
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 15.sp,
-                ),
             color = contentColor,
         )
     }

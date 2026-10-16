@@ -199,7 +199,13 @@ fun Queue(
     AddToPlaylistDialog(
         isVisible = showChoosePlaylistDialog,
         onGetSong = {
-            selectedSongs.map {
+            val songs =
+                if (selectedSongs.isNotEmpty()) {
+                    selectedSongs.toList()
+                } else {
+                    mediaMetadata?.let { listOf(it) } ?: emptyList()
+                }
+            songs.map {
                 database.withTransaction {
                     insert(it)
                 }
@@ -430,7 +436,7 @@ fun Queue(
                         },
                         onShowLyrics = onShowLyrics,
                         onMenuClick = {
-                            menuState.show {
+                            menuState.showImmersive {
                                 PlayerMenu(
                                     mediaMetadata = mediaMetadata,
                                     navController = navController,
@@ -471,7 +477,7 @@ fun Queue(
                     )
                 }
 
-                PlayerDesignStyle.V9, PlayerDesignStyle.V10 -> {
+                PlayerDesignStyle.V9 -> {
                     val shuffleModeEnabled by playerConnection.shuffleModeEnabled.collectAsState()
                     QueueCollapsedContentV9(
                         showCodecOnPlayer = showCodecOnPlayer,
@@ -486,7 +492,7 @@ fun Queue(
                         },
                         onRepeatModeClick = { playerConnection.player.toggleRepeatMode() },
                         onMenuClick = {
-                            menuState.show {
+                            menuState.showImmersive {
                                 PlayerMenu(
                                     mediaMetadata = mediaMetadata,
                                     navController = navController,
@@ -509,6 +515,26 @@ fun Queue(
                                 showSleepTimerDialog = true
                             }
                         },
+                    )
+                }
+
+                PlayerDesignStyle.V10 -> {
+                    val shuffleModeEnabled by playerConnection.shuffleModeEnabled.collectAsState()
+                    QueueCollapsedContentV10(
+                        showCodecOnPlayer = showCodecOnPlayer,
+                        currentFormat = currentFormat,
+                        accent = TextBackgroundColor,
+                        field = textButtonColor,
+                        shuffleModeEnabled = shuffleModeEnabled,
+                        repeatMode = repeatMode,
+                        currentSongLiked = currentSongLiked,
+                        onExpandQueue = openQueue,
+                        onShuffleClick = {
+                            playerConnection.player.shuffleModeEnabled = !shuffleModeEnabled
+                        },
+                        onRepeatModeClick = { playerConnection.player.toggleRepeatMode() },
+                        onToggleLike = playerConnection::toggleLike,
+                        onAddToPlaylistClick = { showChoosePlaylistDialog = true },
                     )
                 }
 
@@ -753,7 +779,7 @@ fun Queue(
                         playerConnection.service.toggleLike()
                     },
                     onMenuClick = {
-                        menuState.show {
+                        menuState.showImmersive {
                             PlayerMenu(
                                 mediaMetadata = mediaMetadata,
                                 navController = navController,
@@ -908,7 +934,7 @@ fun Queue(
                                         trailingContent = {
                                             IconButton(
                                                 onClick = {
-                                                    menuState.show {
+                                                    menuState.showImmersive {
                                                         PlayerMenu(
                                                             mediaMetadata = trackMetadata,
                                                             navController = navController,

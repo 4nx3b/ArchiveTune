@@ -20,7 +20,6 @@ class UsbBitPerfectOutput(
     private var requestedDevice: AudioDeviceInfo? = null
     private var configuredWireFormat: AudioFormat? = null
 
-    /** Depth of the source PCM, used to accept int modes that can carry it losslessly. */
     @Synchronized
     fun setSourceBits(bits: Int?) {
         val value = bits ?: 0
@@ -114,17 +113,11 @@ class UsbBitPerfectOutput(
                 clear()
                 return
             }
-            // The sink writes PCM_FLOAT at the source rate. An exact float mode
-            // at that rate is the perfect match; an integer mode at the same rate
-            // is equally lossless as long as its depth can carry the source bits
-            // (float32 -> intN >= source depth is an exact round trip).
+
             val supported = bitPerfectModes.firstOrNull { sameFormat(it.format, pcm) }
                 ?: bitPerfectModes.firstOrNull { candidate ->
                     candidate.format?.let { fmt ->
-                        fmt.sampleRate == pcm.sampleRate &&
-                            encodingBits(fmt.encoding).let { bits ->
-                                bits >= 24 || (bits == 16 && sourceBits in 0..16)
-                            }
+                        fmt.sampleRate == pcm.sampleRate && fmt.encoding == pcm.encoding
                     } == true
                 }
             if (supported == null) {

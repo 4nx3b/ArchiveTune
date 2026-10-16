@@ -7,13 +7,13 @@
 
 package moe.rukamori.archivetune.ui.component
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.VectorConverter
 import moe.rukamori.archivetune.ui.player.LocalRootOverlayActive
 import androidx.compose.animation.core.snap
+import moe.rukamori.archivetune.constants.BackAnimationStyle
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.DraggableState
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -77,6 +77,7 @@ fun BottomSheet(
     onCollapsedContentClick: (() -> Unit)? = null,
     navbarHiddenOffset: (() -> Float)? = null,
     sharedLayer: (@Composable BoxScope.() -> Unit)? = null,
+    predictiveBackState: PredictiveSheetBackState? = null,
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -91,6 +92,8 @@ fun BottomSheet(
         } else {
             null
         }
+    val predictiveBack = predictiveBackState ?: rememberPredictiveSheetBackState()
+    val predictiveBackStyle = LocalBackAnimationStyle.current == BackAnimationStyle.PREDICTIVE
     Box(
         modifier =
             modifier
@@ -105,6 +108,16 @@ fun BottomSheet(
                     val takeOver =
                         navbarHiddenOffset?.invoke()?.coerceAtLeast(0f) ?: 0f
                     translationY = y + takeOver * (1f - state.progress.coerceIn(0f, 1f))
+
+                    if (predictiveBackStyle) {
+                        val p = predictiveBack.progress.value
+                        if (p > 0f) {
+                            val scale = 1f - 0.08f * p
+                            scaleX = scale
+                            scaleY = scale
+                            alpha = 1f - 0.25f * p
+                        }
+                    }
                 }.bottomSheetDraggable(state, onDismiss)
                 .then(
                     if (morphShape != null) {
@@ -138,7 +151,11 @@ fun BottomSheet(
                 ),
     ) {
         if (state.isExpandedOrExpanding && backHandlerEnabled && !LocalRootOverlayActive.current) {
-            BackHandler(onBack = state::collapseSoft)
+            PredictiveStyleBackHandler(
+                backState = predictiveBack,
+                enabled = true,
+                onBack = state::collapseSoft,
+            )
         }
 
         if (sharedLayer != null) {
@@ -169,7 +186,7 @@ fun BottomSheet(
                                 alpha = ((p - 0.5f) * 2).coerceIn(0f, 1f)
                                 if (p <= 0.01f) translationY = 10_000f
                             } else {
-                                alpha = if (state.isCollapsed) 0f else ((state.progress - 0.25f) * 4).coerceIn(0f, 1f)
+                                alpha = if (state.isCollapsed) 0f else ((state.progress - 0.15f) / 0.85f).coerceIn(0f, 1f)
                             }
                         },
                 content = content,
@@ -185,7 +202,7 @@ fun BottomSheet(
                                 val p = state.progress.coerceIn(0f, 1f)
                                 alpha = ((p - 0.5f) * 2).coerceIn(0f, 1f)
                             } else {
-                                alpha = ((state.progress - 0.25f) * 4).coerceIn(0f, 1f)
+                                alpha = ((state.progress - 0.15f) / 0.85f).coerceIn(0f, 1f)
                             }
                         },
                 content = content,

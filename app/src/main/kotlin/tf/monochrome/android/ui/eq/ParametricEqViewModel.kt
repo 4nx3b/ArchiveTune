@@ -70,7 +70,6 @@ class ParametricEqViewModel @Inject constructor(
             repository.getAllPresets().collect { _allPresets.value = it }
         }
         viewModelScope.launch {
-
             val bandsJson = preferences.paramEqBandsJson.first()
             if (!bandsJson.isNullOrBlank()) {
                 try {
@@ -80,7 +79,6 @@ class ParametricEqViewModel @Inject constructor(
             }
             val activeId = preferences.paramEqActivePresetId.first()
             if (activeId != null) {
-
                 _activePreset.value = repository.getPresetById(activeId)
                     ?: withTimeoutOrNull(PRESET_RESTORE_WAIT_MS) {
                         repository.getPresetByIdFlow(activeId).filterNotNull().first()

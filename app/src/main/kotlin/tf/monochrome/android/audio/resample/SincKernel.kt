@@ -35,7 +35,6 @@ internal class SincKernel(
                 val row = DoubleArray(width)
                 var sum = 0.0
                 for (k in 0 until width) {
-
                     val u = (k - halfWidth + 1) - frac
                     val windowArg = u / halfWidth
                     val w = if (abs(windowArg) >= 1.0) {

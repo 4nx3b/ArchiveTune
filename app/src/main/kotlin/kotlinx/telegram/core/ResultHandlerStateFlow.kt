@@ -24,7 +24,6 @@ class ResultHandlerStateFlow(
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
 ) : TelegramFlow.ResultHandlerFlow, Flow<TdApi.Object> by sharedFlow {
-
     override fun onResult(result: TdApi.Object?) {
         result?.let(sharedFlow::tryEmit)
     }

@@ -17,6 +17,10 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.remember
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -56,9 +60,11 @@ import moe.rukamori.archivetune.ui.screens.podcast.PodcastRoute
 import moe.rukamori.archivetune.ui.screens.podcast.PodcastScreen
 import moe.rukamori.archivetune.ui.screens.settings.AndroidAutoSettings
 import moe.rukamori.archivetune.ui.screens.settings.AboutScreen
+import moe.rukamori.archivetune.ui.screens.settings.about.LocalSukisuBgRenderActive
 import moe.rukamori.archivetune.ui.screens.settings.AccountSettings
 import moe.rukamori.archivetune.ui.screens.settings.AiIntegrationSettings
 import moe.rukamori.archivetune.ui.screens.settings.AodCustomizedScreen
+import moe.rukamori.archivetune.ui.screens.settings.CanvasSettingsScreen
 import moe.rukamori.archivetune.ui.screens.settings.AppearanceExtrasSettings
 import moe.rukamori.archivetune.ui.screens.settings.NavigationBarSettings
 import moe.rukamori.archivetune.ui.screens.settings.AppearanceSettings
@@ -84,6 +90,9 @@ import moe.rukamori.archivetune.ui.screens.settings.QobuzLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.QOBUZ_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.DeezerLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.DEEZER_LOGIN_ROUTE
+import moe.rukamori.archivetune.ui.screens.settings.AppleMusicLoginScreen
+import moe.rukamori.archivetune.ui.screens.settings.APPLE_MUSIC_LOGIN_ROUTE
+import moe.rukamori.archivetune.ui.screens.settings.AppleMusicSettings
 import moe.rukamori.archivetune.ui.screens.settings.LASTFM_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.LastFmLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.LASTFM_LIBREFM_LOGIN_ROUTE
@@ -356,7 +365,7 @@ fun NavGraphBuilder.navigationBuilder(
         ArtistAlbumsScreen(navController, scrollBehavior)
     }
     composable(
-        route = "artist/{artistId}/items?browseId={browseId}&params={params}&title={title}",
+        route = "artist/{artistId}/items?browseId={browseId}&params={params}&title={title}&songs={songs}",
         arguments =
             listOf(
                 navArgument("artistId") {
@@ -374,6 +383,11 @@ fun NavGraphBuilder.navigationBuilder(
                     type = NavType.StringType
                     nullable = true
                     defaultValue = null
+                },
+                navArgument("songs") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = "false"
                 },
             ),
     ) {
@@ -553,6 +567,12 @@ fun NavGraphBuilder.navigationBuilder(
         LiquidGlassSettings(navController, it.savedStateHandle["scrollTo"])
     }
     composable(
+        route = "settings/player/canvas?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        CanvasSettingsScreen(navController, scrollTo = it.savedStateHandle["scrollTo"])
+    }
+    composable(
         route = "settings/player/audiophile?scrollTo={scrollTo}",
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
     ) {
@@ -630,6 +650,9 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         DeezerSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
+    composable(route = "settings/applemusic") {
+        AppleMusicSettings(navController)
+    }
     composable(
         route = "settings/jiosaavn?scrollTo={scrollTo}",
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
@@ -644,6 +667,9 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable(DEEZER_LOGIN_ROUTE) {
         DeezerLoginScreen(navController)
+    }
+    composable(APPLE_MUSIC_LOGIN_ROUTE) {
+        AppleMusicLoginScreen(navController)
     }
     composable(LASTFM_LOGIN_ROUTE) {
         LastFmLoginScreen(navController)
@@ -727,7 +753,14 @@ fun NavGraphBuilder.navigationBuilder(
         ChangelogScreen(navController, channel = channel)
     }
     composable("settings/about") {
-        AboutScreen(navController)
+        val aboutNavTransitionRunning by remember {
+            derivedStateOf { transition.isRunning && transition.targetState != transition.currentState }
+        }
+        CompositionLocalProvider(
+            LocalSukisuBgRenderActive provides { !aboutNavTransitionRunning },
+        ) {
+            AboutScreen(navController)
+        }
     }
     composable(PO_TOKEN_ROUTE) {
         PoTokenScreen(navController)

@@ -8,17 +8,20 @@
 package moe.rukamori.archivetune.ui.player.bitchord
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -26,9 +29,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -36,12 +41,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 
 @Composable
 fun ThinSlider(
@@ -73,6 +77,12 @@ fun ThinSlider(
             stiffness = Spring.StiffnessMediumLow,
         ),
         label = "sliderHeight",
+    )
+
+    val fillFactor by animateFloatAsState(
+        targetValue = if (mixing) 0f else 1f,
+        animationSpec = tween(durationMillis = MORPH_MS, easing = FastOutSlowInEasing),
+        label = "fillFactor",
     )
 
     Box(
@@ -126,11 +136,14 @@ fun ThinSlider(
                     )
                 }
             }
-            val filled = size.width * valueProvider().coerceIn(0f, 1f)
-            if (filled > 0f && !mixing) {
+            val filled = size.width * valueProvider().coerceIn(0f, 1f) * fillFactor
+            if (filled > 0f) {
                 drawRoundRect(
                     color = activeColor,
-                    size = Size(filled.coerceAtLeast(size.height), size.height),
+                    size = Size(
+                        filled.coerceAtLeast(size.height * fillFactor).coerceAtMost(size.width),
+                        size.height,
+                    ),
                     cornerRadius = radius,
                 )
             }
@@ -138,24 +151,29 @@ fun ThinSlider(
 
         AnimatedVisibility(
             visible = mixing,
-            enter = fadeIn(tween(durationMillis = 420)),
-            exit = fadeOut(tween(durationMillis = 520)),
+            enter = fadeIn(tween(durationMillis = MORPH_MS, easing = FastOutSlowInEasing)) +
+                scaleIn(
+                    animationSpec = tween(durationMillis = MORPH_MS, easing = FastOutSlowInEasing),
+                    initialScale = 0f,
+                    transformOrigin = TransformOrigin(0f, 0.5f),
+                ),
+            exit = fadeOut(tween(durationMillis = MORPH_MS, easing = FastOutSlowInEasing)),
         ) {
-            MixSheen(height = height)
+            MixSheen(height = height, color = activeColor)
         }
     }
 }
 
 @Composable
-private fun MixSheen(height: Dp) {
+private fun MixSheen(height: Dp, color: Color) {
     val transition = rememberInfiniteTransition(label = "mixSheen")
     val phase by transition.animateFloat(
-        initialValue = 0f,
+        initialValue = -SHEEN_BAND_FRACTION,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
 
-            animation = tween(durationMillis = 500, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
+            animation = tween(durationMillis = SHEEN_PERIOD_MS, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
         ),
         label = "mixSheenPhase",
     )
@@ -164,22 +182,24 @@ private fun MixSheen(height: Dp) {
             .fillMaxWidth()
             .height(height),
     ) {
-        val band = size.width * BAND_FRACTION
-
-        val centre = -band + (size.width + band * 2f) * phase
+        val band = size.width * SHEEN_BAND_FRACTION
+        val x = phase * size.width
         drawRoundRect(
-            brush = Brush.linearGradient(
+            brush = Brush.horizontalGradient(
                 colorStops = arrayOf(
                     0f to Color.Transparent,
-                    0.5f to Color.White.copy(alpha = 0.95f),
+                    0.5f to color,
                     1f to Color.Transparent,
                 ),
-                start = Offset(centre - band / 2f, 0f),
-                end = Offset(centre + band / 2f, 0f),
+                startX = x,
+                endX = x + band,
             ),
+            size = Size(size.width, size.height),
             cornerRadius = CornerRadius(size.height / 2f),
         )
     }
 }
 
-private const val BAND_FRACTION = 0.7f
+private const val SHEEN_BAND_FRACTION = 0.34f
+private const val SHEEN_PERIOD_MS = 1000
+private const val MORPH_MS = 450

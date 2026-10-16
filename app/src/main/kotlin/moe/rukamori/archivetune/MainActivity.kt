@@ -38,7 +38,6 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateDpAsState
@@ -53,6 +52,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
@@ -142,6 +144,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.luminance
 import moe.rukamori.archivetune.ui.screens.HomeTopFadeBlur
+import moe.rukamori.archivetune.ui.screens.HomeAtmosphereBackground
 import moe.rukamori.archivetune.ui.screens.LocalHomeHazeState
 import moe.rukamori.archivetune.ui.screens.LocalSearchHazeState
 import moe.rukamori.archivetune.ui.screens.LocalLibraryHazeState
@@ -197,11 +200,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.window.core.layout.WindowSizeClass
 import coil3.compose.AsyncImage
-import coil3.imageLoader
 import coil3.request.ImageRequest
-import coil3.request.SuccessResult
-import coil3.request.allowHardware
-import coil3.toBitmap
 import com.valentinilk.shimmer.LocalShimmerTheme
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CancellationException
@@ -217,8 +216,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.aod.ACTION_AOD_MODE
 import moe.rukamori.archivetune.constants.AppBarHeight
+import moe.rukamori.archivetune.constants.BackAnimationStyle
 import moe.rukamori.archivetune.constants.PlayerHeaderGlassFadeRamp
 import moe.rukamori.archivetune.constants.SheetOverlayEpsilon
+import moe.rukamori.archivetune.constants.OverscrollStyle
+import moe.rukamori.archivetune.constants.OverscrollStyleKey
+import moe.rukamori.archivetune.constants.OverscrollRubberBandTensionKey
+import moe.rukamori.archivetune.constants.OverscrollBounceStiffnessKey
+import moe.rukamori.archivetune.constants.NavigationBarCompactBehavior
+import moe.rukamori.archivetune.constants.NavigationBarCompactBehaviorKey
 import moe.rukamori.archivetune.constants.AppFontPreference
 import moe.rukamori.archivetune.constants.AppLanguageKey
 import moe.rukamori.archivetune.constants.AodAutoStartScreenOffKey
@@ -226,12 +232,10 @@ import moe.rukamori.archivetune.constants.AodAutoTimerSecondsKey
 import moe.rukamori.archivetune.constants.AodModeEnabledKey
 import moe.rukamori.archivetune.constants.CustomFontUriKey
 import moe.rukamori.archivetune.constants.CustomThemeColorKey
-import moe.rukamori.archivetune.constants.WallpaperExtractionFailedKey
 import moe.rukamori.archivetune.constants.DarkModeKey
 import moe.rukamori.archivetune.constants.DefaultOpenTabKey
 import moe.rukamori.archivetune.constants.DisableAnimationsKey
 import moe.rukamori.archivetune.constants.DisableScreenshotKey
-import moe.rukamori.archivetune.constants.DynamicThemeKey
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
 import moe.rukamori.archivetune.constants.EnablePipModeKey
 import moe.rukamori.archivetune.constants.EnableVideoPlaybackKey
@@ -257,7 +261,6 @@ import moe.rukamori.archivetune.constants.PlayerDesignStyle
 import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
 import moe.rukamori.archivetune.constants.NavigationBarTintFrostedBlurKey
-import moe.rukamori.archivetune.constants.PureBlackKey
 import moe.rukamori.archivetune.constants.HideStatusBarKey
 import moe.rukamori.archivetune.constants.RemindAfterKey
 import moe.rukamori.archivetune.constants.SYSTEM_DEFAULT
@@ -266,6 +269,7 @@ import moe.rukamori.archivetune.constants.DefaultSearchSourceKey
 import moe.rukamori.archivetune.constants.SearchProvider
 import moe.rukamori.archivetune.constants.SearchSourceKey
 import moe.rukamori.archivetune.constants.StopMusicOnTaskClearKey
+import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.TabletModeEnabledKey
 import moe.rukamori.archivetune.constants.UiScaleFactorKey
 import moe.rukamori.archivetune.constants.UpdateChannel
@@ -311,6 +315,8 @@ import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.ThrottledLayerBackdrop
 import moe.rukamori.archivetune.ui.component.rememberThrottledLayerBackdrop
 import moe.rukamori.archivetune.ui.component.throttledLayerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberIosOverscrollFactory
+import moe.rukamori.archivetune.ui.component.NoOverscrollFactory
 import moe.rukamori.archivetune.ui.component.GlassPipelinePrewarm
 import moe.rukamori.archivetune.ui.component.LocalMenuGlassBackdrop
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
@@ -321,6 +327,7 @@ import moe.rukamori.archivetune.ui.component.NavigationBarBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.colorControls
+import com.kyant.backdrop.shadow.Shadow
 import moe.rukamori.archivetune.ui.component.ProfileMenuDialog
 import moe.rukamori.archivetune.ui.component.ProfileMenuItem
 import moe.rukamori.archivetune.ui.component.AutoResizeText
@@ -330,6 +337,10 @@ import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MarkdownText
 import moe.rukamori.archivetune.ui.component.NetworkStatusBanner
+import moe.rukamori.archivetune.ui.component.PlayerBackController
+import moe.rukamori.archivetune.ui.component.PlayerBackTarget
+import moe.rukamori.archivetune.ui.component.PredictiveStyleBackHandler
+import moe.rukamori.archivetune.ui.component.rememberPredictiveSheetBackState
 import moe.rukamori.archivetune.ui.component.StarDialog
 import moe.rukamori.archivetune.ui.component.TopSearch
 import moe.rukamori.archivetune.ui.component.SearchSourcePicker
@@ -355,11 +366,7 @@ import moe.rukamori.archivetune.ui.screens.search.onlineSearchResultRoute
 import moe.rukamori.archivetune.ui.screens.settings.DarkMode
 import moe.rukamori.archivetune.ui.screens.settings.NavigationTab
 import moe.rukamori.archivetune.ui.theme.ArchiveTuneTheme
-import moe.rukamori.archivetune.ui.theme.ColorSaver
 import moe.rukamori.archivetune.ui.theme.DefaultThemeColor
-import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
-import moe.rukamori.archivetune.ui.theme.extractThemeColor
-import moe.rukamori.archivetune.ui.theme.extractWallpaperThemeColor
 import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.ui.utils.resetHeightOffset
@@ -950,9 +957,39 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            val enableDynamicTheme by rememberPreference(DynamicThemeKey, defaultValue = true)
             val customThemeColorValue by rememberPreference(CustomThemeColorKey, defaultValue = "default")
             val darkTheme by rememberEnumPreference(DarkModeKey, defaultValue = DarkMode.AUTO)
+            val forceHighRefreshRate by rememberPreference(
+                moe.rukamori.archivetune.constants.ForceHighRefreshRateKey,
+                defaultValue = false,
+            )
+            val refreshRateView = androidx.compose.ui.platform.LocalView.current
+            val supportedHighestFps =
+                remember(refreshRateView) {
+                    val display = refreshRateView.display
+                    display?.supportedModes
+                        ?.maxOfOrNull { mode -> mode.refreshRate }
+                        ?: display?.refreshRate
+                        ?: 60f
+                }
+            androidx.compose.runtime.DisposableEffect(
+                refreshRateView,
+                forceHighRefreshRate,
+                supportedHighestFps,
+            ) {
+                val requested =
+                    if (forceHighRefreshRate && supportedHighestFps > 60.5f) supportedHighestFps else 0f
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+                    refreshRateView.setRequestedFrameRate(requested)
+                } else {
+                    val attributes = window.attributes
+                    if (attributes.preferredRefreshRate != requested) {
+                        attributes.preferredRefreshRate = requested
+                        window.attributes = attributes
+                    }
+                }
+                onDispose { }
+            }
             val defaultDisableAnimations = remember(this@MainActivity) { applicationContext.isLowRamDevice() }
             val disableAnimations by rememberPreference(
                 DisableAnimationsKey,
@@ -970,8 +1007,8 @@ class MainActivity : ComponentActivity() {
                 remember(darkTheme, isSystemInDarkTheme) {
                     if (darkTheme == DarkMode.AUTO) isSystemInDarkTheme else darkTheme == DarkMode.ON
                 }
-            val pureBlackEnabled by rememberPreference(PureBlackKey, defaultValue = false)
-            val pureBlack = pureBlackEnabled && useDarkTheme
+
+            val pureBlack = useDarkTheme
             val hideStatusBar by rememberPreference(HideStatusBarKey, defaultValue = false)
             val navigationBarFrostedBlur by rememberPreference(
                 NavigationBarFrostedBlurKey,
@@ -989,8 +1026,36 @@ class MainActivity : ComponentActivity() {
                 LiquidGlassNavBarEnabledKey,
                 defaultValue = false,
             )
+            val navigationBarBitchord by rememberPreference(
+                moe.rukamori.archivetune.constants.NavigationBarBitchordKey,
+                defaultValue = false,
+            )
+            val sukisuLiquidGlassNavBar by rememberPreference(
+                moe.rukamori.archivetune.constants.SukisuLiquidGlassNavBarKey,
+                defaultValue = false,
+            )
 
             val liquidGlassTuning = rememberLiquidGlassTuning()
+
+            val overscrollStyle by rememberEnumPreference(OverscrollStyleKey, defaultValue = OverscrollStyle.IOS_RUBBER_BAND)
+            val backAnimationStylePref by rememberEnumPreference(
+                moe.rukamori.archivetune.constants.BackAnimationStyleKey,
+                defaultValue = moe.rukamori.archivetune.constants.BackAnimationStyle.DEFAULT,
+            )
+            val overscrollTension by rememberPreference(OverscrollRubberBandTensionKey, defaultValue = 0.55f)
+            val overscrollStiffness by rememberPreference(OverscrollBounceStiffnessKey, defaultValue = 247f)
+            val noOverscrollFactory = remember { NoOverscrollFactory() }
+            val iosOverscrollFactory =
+                rememberIosOverscrollFactory(
+                    rubberBandTension = overscrollTension,
+                    bounceStiffness = overscrollStiffness,
+                )
+            val effectiveOverscrollFactory =
+                when (overscrollStyle) {
+                    OverscrollStyle.IOS_RUBBER_BAND -> iosOverscrollFactory
+                    OverscrollStyle.ANDROID_STRETCH -> null
+                    OverscrollStyle.OFF -> noOverscrollFactory
+                }
 
             val customThemeSeedPalette =
                 remember(customThemeColorValue) {
@@ -1027,9 +1092,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-            var themeColor by rememberSaveable(stateSaver = ColorSaver) {
-                mutableStateOf(DefaultThemeColor)
-            }
+            val themeColor = customThemeColor
 
             LaunchedEffect(legacyUseSystemFont) {
                 if (!legacyUseSystemFont) return@LaunchedEffect
@@ -1039,61 +1102,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            LaunchedEffect(playerConnection, enableDynamicTheme, isSystemInDarkTheme, customThemeColor) {
-                val playerConnection = playerConnection
-                if (!enableDynamicTheme || playerConnection == null) {
-                    themeColor = if (!enableDynamicTheme) customThemeColor else DefaultThemeColor
-                    return@LaunchedEffect
-                }
-                playerConnection.service.currentMediaMetadata.collectLatest { song ->
-                    if (song != null) {
-                        withContext(Dispatchers.Default) {
-                            try {
-                                val result =
-                                    imageLoader.execute(
-                                        ImageRequest
-                                            .Builder(this@MainActivity)
-                                            .data(song.thumbnailUrl)
-                                            .allowHardware(false)
-
-                                            .size(
-                                                PlayerColorExtractor.Config.IMAGE_SIZE,
-                                                PlayerColorExtractor.Config.IMAGE_SIZE,
-                                            )
-                                            .build(),
-                                    )
-                                val extractedColor =
-                                    (result as? SuccessResult)?.image?.toBitmap()?.extractThemeColor()
-                                withContext(Dispatchers.Main) {
-                                    themeColor = extractedColor ?: DefaultThemeColor
-                                }
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch (e: Exception) {
-                                withContext(Dispatchers.Main) {
-                                    themeColor = DefaultThemeColor
-                                }
-                            }
-                        }
-                    } else {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                            themeColor = DefaultThemeColor
-                        } else {
-                            val wallpaperColor = extractWallpaperThemeColor(this@MainActivity)
-                            themeColor = wallpaperColor ?: customThemeColor
-                            dataStore.edit { prefs ->
-                                prefs[WallpaperExtractionFailedKey] = wallpaperColor == null
-                            }
-                        }
-                    }
-                }
-            }
-
             ArchiveTuneTheme(
                 darkTheme = useDarkTheme,
                 pureBlack = pureBlack,
                 themeColor = themeColor,
-                seedPalette = if (!enableDynamicTheme) customThemeSeedPalette else null,
+                seedPalette = customThemeSeedPalette,
                 disableAnimations = disableAnimations,
                 fontPreference = fontPreference,
                 customFontUri = customFontUri,
@@ -1153,16 +1166,33 @@ class MainActivity : ComponentActivity() {
                                 val scale = 0.96f + 0.04f * appOpenProgress.value
                                 scaleX = scale
                                 scaleY = scale
-                            }
-                            .background(
-                                if (pureBlack) Color.Black else MaterialTheme.colorScheme.surface,
-                            ),
+                            },
                 ) {
                     val focusManager = LocalFocusManager.current
                     val density = LocalDensity.current
                     val windowsInsets = WindowInsets.systemBars
                     val bottomInset = with(density) { windowsInsets.getBottom(density).toDp() }
                     val bottomInsetDp = WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
+
+                    val (disableBlurForAtmosphere) = rememberPreference(DisableBlurKey, false)
+                    val darkAtmosphereTheme =
+                        MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                    val navBackStackEntryForAtmosphere by navController.currentBackStackEntryAsState()
+                    val atmosphereRoute = navBackStackEntryForAtmosphere?.destination?.route
+                    val atmosphereEligibleRoute =
+                        atmosphereRoute == Screens.Home.route ||
+                            atmosphereRoute == Screens.Search.route ||
+                            atmosphereRoute == Screens.Library.route
+                    if (disableBlurForAtmosphere || !darkAtmosphereTheme || !atmosphereEligibleRoute) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .background(if (pureBlack) Color.Black else MaterialTheme.colorScheme.surface),
+                        )
+                    } else {
+                        HomeAtmosphereBackground(subtle = true)
+                    }
 
                     val isTvDevice = remember { applicationContext.isTvDevice() }
                     val (tabletModeEnabled) = rememberPreference(TabletModeEnabledKey, defaultValue = false)
@@ -1202,7 +1232,6 @@ class MainActivity : ComponentActivity() {
                         )
                     var profileMenuExpanded by rememberSaveable { mutableStateOf(false) }
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
-                    val (previousTab) = rememberSaveable { mutableStateOf("home") }
                     val currentRoute = navBackStackEntry?.destination?.route
                     val onlineSearchEncodedQuery =
                         navBackStackEntry
@@ -1406,10 +1435,22 @@ class MainActivity : ComponentActivity() {
                                 !active
                         }
 
+                    val navigationBarCompactBehavior by rememberEnumPreference(
+                        key = NavigationBarCompactBehaviorKey,
+                        defaultValue = NavigationBarCompactBehavior.ADAPTIVE,
+                    )
+
                     var isBottomUiCompact by remember { mutableStateOf(false) }
-                    LaunchedEffect(navBackStackEntry?.destination?.route) {
-                        isBottomUiCompact = false
+                    LaunchedEffect(
+                        navBackStackEntry?.destination?.route,
+                        navigationBarCompactBehavior,
+                        isYearInMusicScreen,
+                    ) {
+                        isBottomUiCompact =
+                            navigationBarCompactBehavior == NavigationBarCompactBehavior.ALWAYS_COMPACT &&
+                                !isYearInMusicScreen
                     }
+                    val yearInMusicScreenUpdated = rememberUpdatedState(isYearInMusicScreen)
                     val navBarScrollDensity = LocalDensity.current
                     val navBarHideScrollThresholdPx = with(navBarScrollDensity) { 14.dp.toPx() }
                     val navBarScrollHideConnection =
@@ -1420,7 +1461,10 @@ class MainActivity : ComponentActivity() {
                                     available: Offset,
                                     source: NestedScrollSource,
                                 ): Offset {
-                                    if (source == NestedScrollSource.UserInput) {
+                                    if (source == NestedScrollSource.UserInput &&
+                                        navigationBarCompactBehavior == NavigationBarCompactBehavior.ADAPTIVE &&
+                                        !yearInMusicScreenUpdated.value
+                                    ) {
                                         if (consumed.y < -navBarHideScrollThresholdPx) {
                                             isBottomUiCompact = true
                                         } else if (consumed.y > navBarHideScrollThresholdPx) {
@@ -1450,7 +1494,9 @@ class MainActivity : ComponentActivity() {
                     val compactLeftCircleIsLibrary =
                         remember(navBackStackEntry?.destination?.route) {
                             val route = navBackStackEntry?.destination?.route ?: ""
-                            route == "history" ||
+
+                            route == "home" ||
+                                route == "history" ||
                                 route == "local_songs" ||
                                 route == "library_playlists" ||
                                 route == "library_spotify_playlists" ||
@@ -1471,10 +1517,18 @@ class MainActivity : ComponentActivity() {
                                 route == "settings"
                         } == true
 
+                    val compactSearchCircleHidden =
+                        remember(navBackStackEntry?.destination?.route) {
+                            val route = navBackStackEntry?.destination?.route ?: ""
+                            route == "settings/about" ||
+                                route == "settings/misc" ||
+                                route == "settings/update"
+                        }
+
                     val compactSearchCircleVisible =
                         navBackStackEntry?.destination?.route?.startsWith("artist/") != true &&
-
-                            (compactRouteHasInPageSearch || !compactLeftCircleIsLibrary)
+                            !compactSearchCircleHidden &&
+                            (compactRouteHasInPageSearch || !compactLeftCircleIsLibrary || navBackStackEntry?.destination?.route == "home")
 
                     val navigationBarGlassGlow by rememberPreference(
                         NavigationBarGlassGlowKey,
@@ -1515,6 +1569,7 @@ class MainActivity : ComponentActivity() {
                     val anyFrostedConsumerActive =
                         navigationBarFrostedBlur ||
                             navigationBarTintFrostedBlur ||
+                            navigationBarBitchord ||
                             miniPlayerBgStyle == MiniPlayerBackgroundStyle.FROSTED
                     val navBarFrostedBackdrop =
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && anyFrostedConsumerActive) {
@@ -1531,7 +1586,9 @@ class MainActivity : ComponentActivity() {
                             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
                     val liquidGlassBackdrop: ThrottledLayerBackdrop? =
-                        if (liquidGlassActive) {
+                        if (liquidGlassActive ||
+                            (navigationBarBitchord && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+                        ) {
                             rememberThrottledLayerBackdrop()
                         } else {
                             null
@@ -1592,6 +1649,22 @@ class MainActivity : ComponentActivity() {
                                     MiniPlayerHeight,
                             expandedBound = maxHeight,
                         )
+
+                    val playerBackController = remember { PlayerBackController() }
+                    val playerSheetPredictiveBack = rememberPredictiveSheetBackState()
+
+                    androidx.compose.runtime.LaunchedEffect(pendingExpandPlayerSheet) {
+                        if (!pendingExpandPlayerSheet) return@LaunchedEffect
+                        if (playerConnection == null) {
+                            kotlinx.coroutines.delay(150L)
+                            if (playerConnection == null) {
+                                pendingExpandPlayerSheet = false
+                                return@LaunchedEffect
+                            }
+                        }
+                        pendingExpandPlayerSheet = false
+                        runCatching { playerBottomSheetState.expandSoft() }
+                    }
 
                     val playerBackground by rememberEnumPreference(
                         key = PlayerBackgroundStyleKey,
@@ -1817,6 +1890,11 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    val quantizedCompactFraction by remember {
+                        androidx.compose.runtime.derivedStateOf {
+                            kotlin.math.round(bottomUiCompactFractionState.value * 20f) / 20f
+                        }
+                    }
                     val playerAwareWindowInsets =
                         remember(
                             useRail,
@@ -1824,16 +1902,30 @@ class MainActivity : ComponentActivity() {
                             shouldShowNavigationBar,
                             playerBottomSheetState.isDismissed,
                             effectiveStatusBarTop,
+
+                            quantizedCompactFraction,
                         ) {
                             var bottom = bottomInset
                             if (!useRail) {
                                 bottom += floatingBarsBottomPadding
                             }
-                            if (shouldShowNavigationBar && !useRail) {
-                                bottom += getBottomNavPadding()
-                            }
                             if (!playerBottomSheetState.isDismissed) {
-                                bottom += MiniPlayerHeight + MiniPlayerBottomSpacing
+                                if (shouldShowNavigationBar && !useRail) {
+                                    val fullStack =
+                                        navVisibleHeight + MiniPlayerBottomSpacing + MiniPlayerHeight
+                                    val compactStack =
+                                        (navVisibleHeight + MiniPlayerCompactHeight) / 2
+                                    bottom +=
+                                        androidx.compose.ui.unit.lerp(
+                                            fullStack,
+                                            compactStack,
+                                            quantizedCompactFraction,
+                                        )
+                                } else {
+                                    bottom += MiniPlayerHeight + MiniPlayerBottomSpacing
+                                }
+                            } else if (shouldShowNavigationBar && !useRail) {
+                                bottom += getBottomNavPadding()
                             }
                             effectiveWindowsInsets
                                 .only(
@@ -2189,6 +2281,8 @@ class MainActivity : ComponentActivity() {
                         }
                     val haptic = LocalHapticFeedback.current
                     val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
+
+                    val libraryTitleRevealState = remember { mutableStateOf(true) }
                     val customHaptic =
                         remember(haptic, enableHapticFeedback) {
                             object : HapticFeedback {
@@ -2210,6 +2304,7 @@ class MainActivity : ComponentActivity() {
                         LocalPlayerConnection provides playerConnection,
                         LocalListenTogetherManager provides listenTogetherManager,
                         LocalPlayerAwareWindowInsets provides playerAwareWindowInsets,
+                        moe.rukamori.archivetune.ui.screens.library.LocalLibraryTitleReveal provides libraryTitleRevealState,
                         LocalStableSystemBarsTopPadding provides effectiveStatusBarTop,
                         LocalDownloadUtil provides downloadUtil,
                         LocalShimmerTheme provides ShimmerTheme,
@@ -2220,15 +2315,17 @@ class MainActivity : ComponentActivity() {
                         moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState provides bottomSheetPageState,
                         moe.rukamori.archivetune.ui.component.LocalMenuState provides menuState,
                         LocalNavigationBarBackdrop provides navBarFrostedBackdrop,
-                        LocalLiquidGlassBackdrop provides liquidGlassBackdrop,
+                        LocalLiquidGlassBackdrop provides if (liquidGlassActive) liquidGlassBackdrop else null,
                         moe.rukamori.archivetune.ui.component.LocalMenuGlassBackdrop provides menuGlassBackdrop,
                         moe.rukamori.archivetune.ui.component.LocalLiquidGlassTuning provides liquidGlassTuning,
                         moe.rukamori.archivetune.ui.component.LocalBottomUiCompactFraction provides bottomUiCompactFractionState,
+                        moe.rukamori.archivetune.ui.component.LocalBackAnimationStyle provides backAnimationStylePref,
                         moe.rukamori.archivetune.ui.player.LocalRootOverlayActive provides rootOverlayActive,
                         moe.rukamori.archivetune.ui.player.LocalIsInPipMode provides isInPictureInPictureModeState,
                         moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen provides isPlayerLyricsFullScreen,
                         moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayActive provides isPlayerSheetOverlayActive,
                         moe.rukamori.archivetune.ui.player.LocalPlayerSheetOverlayFraction provides playerSheetOverlayFractionState,
+                        LocalOverscrollFactory provides effectiveOverscrollFactory,
                     ) {
                         Row(
                             modifier =
@@ -2398,6 +2495,8 @@ class MainActivity : ComponentActivity() {
                                             }
                                         }
                                         if (canRailLiquidGlass && liquidGlassBackdrop != null) {
+                                            val railGlassDark =
+                                                MaterialTheme.colorScheme.surface.luminance() < 0.5f
                                             Box(
                                                 modifier =
                                                     Modifier
@@ -2407,6 +2506,10 @@ class MainActivity : ComponentActivity() {
                                                             effects = {
                                                                 colorControls(saturation = 1.7f)
                                                                 blur(4f.dp.toPx())
+                                                            },
+
+                                                            shadow = {
+                                                                if (railGlassDark) Shadow.Default else null
                                                             },
                                                             onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
                                                             shape = { RectangleShape },
@@ -2418,6 +2521,7 @@ class MainActivity : ComponentActivity() {
                             }
 
                             Scaffold(
+                                containerColor = Color.Transparent,
                                 topBar = {
                                     if (shouldShowTopBar) {
                                         val shouldUseFloatingTopBar =
@@ -2443,6 +2547,22 @@ class MainActivity : ComponentActivity() {
                                         val isLibraryRoute = navBackStackEntry?.destination?.route == Screens.Library.route
                                         val isHomeRoute = navBackStackEntry?.destination?.route == Screens.Home.route
                                         val isSearchRoute = navBackStackEntry?.destination?.route == Screens.Search.route
+
+                                        LaunchedEffect(isLibraryRoute) {
+
+                                            libraryTitleRevealState.value = isLibraryRoute
+                                        }
+                                        val libraryTitleRevealed by libraryTitleRevealState
+                                        val libraryTitleAlpha by animateFloatAsState(
+                                            targetValue = if (isLibraryRoute && libraryTitleRevealed) 1f else 0f,
+                                            animationSpec = tween(220),
+                                            label = "libraryTitleAlpha",
+                                        )
+                                        val libraryTitleSlideFraction by animateFloatAsState(
+                                            targetValue = if (isLibraryRoute && libraryTitleRevealed) 1f else 0f,
+                                            animationSpec = tween(220),
+                                            label = "libraryTitleSlide",
+                                        )
                                         val homeBarScrolled by remember(isHomeRoute) {
                                             derivedStateOf {
                                                 homeScrollBehavior.state.collapsedFraction > 0.05f
@@ -2629,7 +2749,14 @@ class MainActivity : ComponentActivity() {
                                                 title = {
                                                     if (isLibraryRoute) {
                                                         Box(
-                                                            modifier = Modifier.fillMaxWidth(),
+                                                            modifier =
+                                                                Modifier
+                                                                    .fillMaxWidth()
+                                                                    .graphicsLayer {
+                                                                        alpha = libraryTitleAlpha
+                                                                        translationY =
+                                                                            (1f - libraryTitleSlideFraction) * -32.dp.toPx()
+                                                                    },
                                                             contentAlignment = Alignment.Center,
                                                         ) {
                                                             Text(
@@ -2658,31 +2785,10 @@ class MainActivity : ComponentActivity() {
                                                             )
                                                         }
                                                     } else if (isSearchRoute) {
-
                                                         Box(modifier = Modifier.fillMaxWidth())
                                                     } else {
-                                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                                            Icon(
-                                                                painter = painterResource(R.drawable.about_appbar),
-                                                                contentDescription = null,
-                                                                modifier =
-                                                                    Modifier
-                                                                        .size(35.dp)
-                                                                        .padding(end = 3.dp),
-                                                            )
-                                                            AutoResizeText(
-                                                                text = stringResource(R.string.app_name),
-                                                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                                                                fontSizeRange = FontSizeRange(min = 14.sp, max = 22.sp),
-                                                                maxLines = 1,
-                                                                overflow = TextOverflow.Visible,
-                                                                softWrap = true,
-                                                                modifier =
-                                                                    Modifier
-                                                                        .weight(1f, fill = false)
-                                                                        .graphicsLayer { alpha = homeBarTitleAlpha },
-                                                            )
-                                                        }
+
+                                                        Box(modifier = Modifier.fillMaxWidth())
                                                     }
                                                 },
                                                 actions = {
@@ -2869,6 +2975,10 @@ class MainActivity : ComponentActivity() {
                                                                 SearchSource.ONLINE ->
                                                                     if (searchProvider == SearchProvider.SPOTIFY) {
                                                                         R.string.search_source_spotify
+                                                                    } else if (searchProvider == SearchProvider.APPLE_MUSIC) {
+                                                                        R.string.search_source_apple_music
+                                                                    } else if (searchProvider == SearchProvider.SOUNDCLOUD) {
+                                                                        R.string.search_source_soundcloud
                                                                     } else {
                                                                         R.string.search_yt_music
                                                                     }
@@ -3079,6 +3189,8 @@ class MainActivity : ComponentActivity() {
                                                 compactFractionState = bottomUiCompactFractionState,
                                                 compactHorizontalPadding = navBarHorizontalPadding,
                                                 compactReserveEndControl = compactSearchCircleVisible,
+                                                backController = playerBackController,
+                                                predictiveBackState = playerSheetPredictiveBack,
                                                 navbarHiddenOffset = {
                                                     if (shouldShowNavigationBar && !useRail) {
                                                         val hideFraction =
@@ -3134,6 +3246,65 @@ class MainActivity : ComponentActivity() {
                                                         alpha = 1f - bottomUiCompactFractionState.value * 0.9f
                                                     },
                                         ) {
+                                            if (navigationBarBitchord) {
+                                                moe.rukamori.archivetune.ui.component.BitChordNavBar(
+                                                    barHeight = navVisibleHeight,
+                                                    selectedRoute =
+                                                        navBackStackEntry?.destination?.route,
+                                                    onRouteSelected = { route ->
+                                                        navigationItems
+                                                            .firstOrNull { it.route == route }
+                                                            ?.let { screen ->
+                                                                val isSelected =
+                                                                    navBackStackEntry?.destination?.hierarchy
+                                                                        ?.any { it.route == screen.route } == true
+                                                                handlePrimaryNavigationClick(screen, isSelected)
+                                                            }
+                                                    },
+                                                    itemCount = navigationItems.size,
+                                                    itemRoute = { navigationItems[it].route },
+                                                    itemLabel = { androidx.compose.ui.res.stringResource(navigationItems[it].titleId) },
+                                                    itemIcon = { index ->
+                                                        when (navigationItems[index].route) {
+                                                            "home" -> moe.rukamori.archivetune.ui.component.BitChordHomeIcon
+                                                            "search" -> moe.rukamori.archivetune.ui.component.BitChordSearchIcon
+                                                            else -> moe.rukamori.archivetune.ui.component.BitChordLibraryIcon
+                                                        }
+                                                    },
+                                                    modifier =
+                                                        Modifier
+                                                            .align(Alignment.BottomCenter)
+                                                            .padding(
+                                                                bottom = bottomInset + floatingBarsBottomPadding,
+                                                            ),
+                                                    frostedBackdrop = navBarFrostedBackdrop,
+                                                    liquidGlassBackdrop = liquidGlassBackdrop,
+                                                )
+                                            } else if (
+                                                sukisuLiquidGlassNavBar &&
+                                                liquidGlassEnabled &&
+                                                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                                            ) {
+                                                moe.rukamori.archivetune.ui.component.sukisu.SukisuLiquidNavBar(
+                                                    items = navigationItems,
+                                                    backdrop = liquidGlassBackdrop,
+                                                    modifier =
+                                                        Modifier
+                                                            .align(Alignment.BottomCenter)
+                                                            .padding(
+                                                                start = navBarHorizontalPadding,
+                                                                end = navBarHorizontalPadding,
+                                                                bottom = bottomInset + floatingBarsBottomPadding,
+                                                            ),
+                                                    isSelected = { screen ->
+                                                        navBackStackEntry?.destination?.hierarchy?.any { it.route == screen.route } ==
+                                                            true
+                                                    },
+                                                    onItemClick = { screen, isSelected ->
+                                                        handlePrimaryNavigationClick(screen, isSelected)
+                                                    },
+                                                )
+                                            } else {
                                             FloatingNavigationToolbar(
                                                 items = navigationItems,
                                                 pureBlack = pureBlack,
@@ -3164,11 +3335,15 @@ class MainActivity : ComponentActivity() {
                                                     openSearch()
                                                 },
                                             )
+                                            }
                                         }
                                         }
 
-                                        if (shouldShowNavigationBar || !playerBottomSheetState.isDismissed) {
-
+                                        if (
+                                            shouldShowNavigationBar ||
+                                            !playerBottomSheetState.isDismissed ||
+                                            bottomUiCompactFractionState.value > 0.01f
+                                        ) {
                                             val compactRowVisible by remember {
                                                 derivedStateOf {
                                                     bottomUiCompactFractionState.value *
@@ -3215,7 +3390,6 @@ class MainActivity : ComponentActivity() {
                                                                 },
                                                             ),
                                                         onClick = {
-
                                                             navigateToTabRoot(
                                                                 if (compactLeftCircleIsLibrary) {
                                                                     Screens.Library
@@ -3236,7 +3410,6 @@ class MainActivity : ComponentActivity() {
                                                             contentDescription = stringResource(Screens.Search.titleId),
                                                             onClick = {
                                                                 if (compactRouteHasInPageSearch) {
-
                                                                     navController.currentBackStackEntry
                                                                         ?.savedStateHandle
                                                                         ?.set("openSearch", true)
@@ -3260,33 +3433,6 @@ class MainActivity : ComponentActivity() {
                                 },
                                 modifier = Modifier.fillMaxSize(),
                             ) {
-                                var transitionDirection =
-                                    AnimatedContentTransitionScope.SlideDirection.Left
-
-                                if (navigationItems.fastAny { it.route == navBackStackEntry?.destination?.route }) {
-                                    if (navigationItems.fastAny { it.route == previousTab }) {
-                                        val curIndex =
-                                            navigationItems.indexOf(
-                                                navigationItems.fastFirstOrNull {
-                                                    it.route == navBackStackEntry?.destination?.route
-                                                },
-                                            )
-
-                                        val prevIndex =
-                                            navigationItems.indexOf(
-                                                navigationItems.fastFirstOrNull {
-                                                    it.route == previousTab
-                                                },
-                                            )
-
-                                        if (prevIndex > curIndex) {
-                                            AnimatedContentTransitionScope.SlideDirection.Right.also {
-                                                transitionDirection = it
-                                            }
-                                        }
-                                    }
-                                }
-
                                 NavHost(
                                     navController = navController,
                                     startDestination =
@@ -3302,14 +3448,14 @@ class MainActivity : ComponentActivity() {
                                     enterTransition = {
                                         if (disableAnimations) {
                                             fadeIn(tween(0))
-                                        } else if (initialState.destination.route in topLevelScreens &&
-                                            targetState.destination.route in topLevelScreens
+                                        } else if (
+                                            backAnimationStylePref == BackAnimationStyle.PREDICTIVE &&
+                                            targetState.destination.route !in topLevelScreens
                                         ) {
-                                            fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
-                                                scaleIn(
-                                                    animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
-                                                    initialScale = 0.94f,
-                                                )
+                                            slideInHorizontally(
+                                                animationSpec = tween(360, easing = FastOutSlowInEasing),
+                                                initialOffsetX = { it },
+                                            ) + fadeIn(tween(240, delayMillis = 40, easing = FastOutSlowInEasing))
                                         } else {
                                             fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
                                                 scaleIn(
@@ -3321,10 +3467,14 @@ class MainActivity : ComponentActivity() {
                                     exitTransition = {
                                         if (disableAnimations) {
                                             fadeOut(tween(0))
-                                        } else if (initialState.destination.route in topLevelScreens &&
-                                            targetState.destination.route in topLevelScreens
+                                        } else if (
+                                            backAnimationStylePref == BackAnimationStyle.PREDICTIVE &&
+                                            targetState.destination.route !in topLevelScreens
                                         ) {
-                                            fadeOut(tween(220, easing = LinearOutSlowInEasing))
+                                            slideOutHorizontally(
+                                                animationSpec = tween(360, easing = FastOutSlowInEasing),
+                                                targetOffsetX = { -it / 3 },
+                                            ) + fadeOut(tween(200, easing = LinearOutSlowInEasing))
                                         } else {
                                             fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         }
@@ -3332,17 +3482,11 @@ class MainActivity : ComponentActivity() {
                                     popEnterTransition = {
                                         if (disableAnimations) {
                                             fadeIn(tween(0))
-                                        } else if ((
-                                                initialState.destination.route in topLevelScreens ||
-                                                    initialState.destination.route?.startsWith(OnlineSearchResultRoutePrefix) == true
-                                            ) &&
-                                            targetState.destination.route in topLevelScreens
-                                        ) {
-                                            fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
-                                                scaleIn(
-                                                    animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
-                                                    initialScale = 0.94f,
-                                                )
+                                        } else if (backAnimationStylePref == BackAnimationStyle.PREDICTIVE) {
+                                            slideInHorizontally(
+                                                animationSpec = tween(360, easing = FastOutSlowInEasing),
+                                                initialOffsetX = { -it / 3 },
+                                            ) + fadeIn(tween(240, delayMillis = 40, easing = FastOutSlowInEasing))
                                         } else {
                                             fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
                                                 scaleIn(
@@ -3354,13 +3498,14 @@ class MainActivity : ComponentActivity() {
                                     popExitTransition = {
                                         if (disableAnimations) {
                                             fadeOut(tween(0))
-                                        } else if ((
-                                                initialState.destination.route in topLevelScreens ||
-                                                    initialState.destination.route?.startsWith(OnlineSearchResultRoutePrefix) == true
-                                            ) &&
-                                            targetState.destination.route in topLevelScreens
+                                        } else if (
+                                            backAnimationStylePref == BackAnimationStyle.PREDICTIVE &&
+                                            initialState.destination.route !in topLevelScreens
                                         ) {
-                                            fadeOut(tween(220, easing = LinearOutSlowInEasing))
+                                            slideOutHorizontally(
+                                                animationSpec = tween(360, easing = FastOutSlowInEasing),
+                                                targetOffsetX = { it },
+                                            ) + fadeOut(tween(280, easing = LinearOutSlowInEasing))
                                         } else {
                                             fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         }
@@ -3383,22 +3528,17 @@ class MainActivity : ComponentActivity() {
                                                             navBarFrostedBackdrop.contentOffsetInRoot =
                                                                 coordinates.positionInRoot()
                                                         }.drawWithContent {
-                                                            val now = SystemClock.uptimeMillis()
-                                                            if (now - frostedRecordClock[0] >= 100L) {
-                                                                frostedRecordClock[0] = now
-
-                                                                val recorded =
-                                                                    runCatching {
-                                                                        navBarFrostedBackdrop.layer.record {
-                                                                            this@drawWithContent.drawContent()
-                                                                        }
-                                                                    }.isSuccess
-                                                                if (recorded) {
-                                                                    runCatching {
-                                                                        drawLayer(navBarFrostedBackdrop.layer)
+                                                            val recorded =
+                                                                runCatching {
+                                                                    navBarFrostedBackdrop.layer.record {
+                                                                        this@drawWithContent.drawContent()
                                                                     }
-                                                                    return@drawWithContent
+                                                                }.isSuccess
+                                                            if (recorded) {
+                                                                runCatching {
+                                                                    drawLayer(navBarFrostedBackdrop.layer)
                                                                 }
+                                                                return@drawWithContent
                                                             }
 
                                                             drawContent()
@@ -3444,19 +3584,24 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
+                        PredictiveStyleBackHandler(
+                            backState = playerSheetPredictiveBack,
+                            enabled = playerBackController.backTarget == PlayerBackTarget.SHEET,
+                            onBack = playerBottomSheetState::collapseSoft,
+                        )
+
                         BackHandler(
-                            enabled =
-                                playerBottomSheetState.isExpanded &&
-                                    !isPlayerLyricsFullScreen &&
-                                    !aodModeEnabled &&
-                                    !rootOverlayActive,
+                            enabled = playerBackController.backTarget == PlayerBackTarget.SUB_PAGE,
                         ) {
-                            playerBottomSheetState.collapseSoft()
+                            playerBackController.routeBack()
                         }
 
                         BottomSheetMenu(
                             state = LocalMenuState.current,
-                            modifier = Modifier.align(Alignment.BottomCenter),
+                            modifier =
+                                Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .zIndex(100f),
                         )
 
                         val lyricsExportTtmlLauncher =
@@ -3587,6 +3732,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private var pendingExpandPlayerSheet by androidx.compose.runtime.mutableStateOf(false)
+
     private fun isBackupUri(uri: Uri?): Boolean {
         if (uri == null) return false
         val path = uri.lastPathSegment?.lowercase(Locale.US)
@@ -3598,6 +3745,11 @@ class MainActivity : ComponentActivity() {
         navController: NavHostController,
     ) {
         if (intent == null) return
+        if (intent.getBooleanExtra("expand_player", false)) {
+            pendingExpandPlayerSheet = true
+            intent.removeExtra("expand_player")
+            return
+        }
         intent.getStringExtra("navigate_to")?.takeIf { it.isNotBlank() }?.let { route ->
             navController.navigate(route) {
                 launchSingleTop = true

@@ -58,6 +58,25 @@ val AlbumCanvasEnabledKey = booleanPreferencesKey("albumCanvasEnabled")
 val AppleMusicAnimatedArtworkKey = booleanPreferencesKey("appleMusicAnimatedArtwork")
 
 val CanvasResolverEndpointsKey = stringPreferencesKey("canvasResolverEndpoints")
+
+val DolbyFfmpegDecoderKey = booleanPreferencesKey("dolbyFfmpegDecoder")
+
+val ProceduralArtworkEnabledKey = booleanPreferencesKey("proceduralArtworkEnabled")
+val ProceduralArtworkStyleKey = stringPreferencesKey("proceduralArtworkStyle")
+val CanvasAudioReactiveKey = booleanPreferencesKey("canvasAudioReactive")
+
+enum class ProceduralCanvasStyle {
+    KAWARP,
+    SQUARE_TUNNEL,
+    ;
+
+    companion object {
+        fun fromPreference(value: String?): ProceduralCanvasStyle {
+            return entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: KAWARP
+        }
+    }
+}
+
 val ThumbnailCornerRadiusKey = floatPreferencesKey("thumbnailCornerRadius")
 val CropThumbnailToSquareKey = booleanPreferencesKey("cropThumbnailToSquare")
 
@@ -92,7 +111,6 @@ val AodShowClockKey = booleanPreferencesKey("aodShowClock")
 val AodClockStyleKey = stringPreferencesKey("aodClockStyle")
 val AodShowBatteryKey = booleanPreferencesKey("aodShowBattery")
 val AodPixelShiftEnabledKey = booleanPreferencesKey("aodPixelShiftEnabled")
-val AodShowLyricTickerKey = booleanPreferencesKey("aodShowLyricTicker")
 val AodAutoDimmingKey = booleanPreferencesKey("aodAutoDimming")
 val AodAutoDimTimeoutKey = intPreferencesKey("aodAutoDimTimeout")
 val AodGesturesEnabledKey = booleanPreferencesKey("aodGesturesEnabled")
@@ -121,6 +139,8 @@ val MiniPlayerBackgroundStyleKey = stringPreferencesKey("miniPlayerBackgroundSty
 
 val LiquidGlassEnabledKey = booleanPreferencesKey("liquidGlassEnabled")
 val LiquidGlassNavBarEnabledKey = booleanPreferencesKey("liquidGlassNavBarEnabled")
+val NavigationBarBitchordKey = booleanPreferencesKey("navigationBarBitchord")
+val SukisuLiquidGlassNavBarKey = booleanPreferencesKey("sukisuLiquidGlassNavBar")
 
 enum class LiquidGlassIntensity { SUBTLE, STANDARD, VIVID }
 
@@ -256,19 +276,17 @@ val EnableYouLyPlusLyricsKey = booleanPreferencesKey("enableYouLyPlusLyrics")
 
 val EnableMegalobizLyricsKey = booleanPreferencesKey("enableMegalobizLyrics")
 val EnableBiniLyricsKey = booleanPreferencesKey("enableBiniLyrics")
+val EnableLrcRedKey = booleanPreferencesKey("enableLrcRed")
+val EnableSimpMusicLyricsKey = booleanPreferencesKey("enableSimpMusicLyrics")
+val EnableGeniusLyricsKey = booleanPreferencesKey("enableGeniusLyrics")
 
 val PaxsenixApiKeyKey = stringPreferencesKey("paxsenixApiKey")
 val PaxsenixEndpointKey = stringPreferencesKey("paxsenixEndpoint")
 val EnableUnisonLyricsKey = booleanPreferencesKey("enableUnisonLyrics")
 
-val EnablePaxsenixLyricsKey = booleanPreferencesKey("enablePaxsenixLyrics")
 val EnablePaxsenixAppleMusicLyricsKey = booleanPreferencesKey("enablePaxsenixAppleMusicLyrics")
-val EnablePaxsenixNeteaseLyricsKey = booleanPreferencesKey("enablePaxsenixNeteaseLyrics")
 val EnablePaxsenixSpotifyLyricsKey = booleanPreferencesKey("enablePaxsenixSpotifyLyrics")
 val EnablePaxsenixMusixmatchLyricsKey = booleanPreferencesKey("enablePaxsenixMusixmatchLyrics")
-val EnablePaxsenixYouTubeLyricsKey = booleanPreferencesKey("enablePaxsenixYouTubeLyrics")
-val EnableTidalLyricsKey = booleanPreferencesKey("enableTidalLyrics")
-val EnableDeezerLyricsKey = booleanPreferencesKey("enableDeezerLyrics")
 
 val PrioritizeWordSyncedLyricsKey = booleanPreferencesKey("prioritizeWordSyncedLyrics")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
@@ -392,7 +410,6 @@ val ProxyPasswordKey = stringPreferencesKey("proxyPassword")
 val ProxyTypeKey = stringPreferencesKey("proxyType")
 val EnableDnsOverHttpsKey = booleanPreferencesKey("enableDnsOverHttps")
 val DnsOverHttpsProviderKey = stringPreferencesKey("dnsOverHttpsProvider")
-val TidalInstanceUrlKey = stringPreferencesKey("tidalInstanceUrl")
 val StreamBypassProxyKey = booleanPreferencesKey("streamBypassProxy")
 val IpRotationEnabledKey = booleanPreferencesKey("ipRotationEnabled")
 val YtmSyncKey = booleanPreferencesKey("ytmSync")
@@ -403,6 +420,8 @@ val LocalSongsIncludedFoldersKey = stringSetPreferencesKey("local_songs_included
 val LocalSongsExcludedFoldersKey = stringSetPreferencesKey("local_songs_excluded_folders")
 val LocalSongsSortTypeKey = stringPreferencesKey("local_songs_sort_type")
 val LocalSongsSortDescendingKey = booleanPreferencesKey("local_songs_sort_descending")
+
+val LocalScanExtractionVersionKey = intPreferencesKey("local_scan_extraction_version")
 
 val ListenBrainzEnabledKey = booleanPreferencesKey("listenbrainz_enabled")
 val ListenBrainzTokenKey = stringPreferencesKey("listenbrainz_token")
@@ -429,8 +448,6 @@ val DeeplFormalityKey = stringPreferencesKey("deeplFormality")
 val OpenRouterApiKeyKey = stringPreferencesKey("openRouterApiKey")
 val OpenRouterBaseUrlKey = stringPreferencesKey("openRouterBaseUrl")
 val OpenRouterModelKey = stringPreferencesKey("openRouterModel")
-
-val TranslateModeKey = stringPreferencesKey("translateMode")
 
 val TranslateLanguageKey = stringPreferencesKey("translateLanguage")
 
@@ -499,8 +516,7 @@ enum class LastFmProvider {
 
 val AudioQualityKey = stringPreferencesKey("audioQuality")
 
-val NetworkMeteredKey = booleanPreferencesKey("networkMetered")
-val LowDataModeKey = NetworkMeteredKey
+val LowDataModeKey = booleanPreferencesKey("networkMetered")
 
 enum class AudioQuality {
     AUTO,
@@ -604,6 +620,8 @@ val MaxImageCacheSizeKey = intPreferencesKey("maxImageCacheSize")
 val SmartTrimmerKey = booleanPreferencesKey("smartTrimmer")
 val MaxSongCacheSizeKey = intPreferencesKey("maxSongCacheSize")
 val MaxCanvasCacheSizeKey = intPreferencesKey("maxCanvasCacheSize")
+
+val MaxVideoCacheSizeKey = intPreferencesKey("maxVideoCacheSize")
 val StorageFolderIdKey = stringPreferencesKey("storageFolderId")
 val StorageFolderTreeUriKey = stringPreferencesKey("storageFolderTreeUri")
 val StorageFolderPathKey = stringPreferencesKey("storageFolderPath")
@@ -614,9 +632,6 @@ val PauseSearchHistoryKey = booleanPreferencesKey("pauseSearchHistory")
 
 val SyncPlaybackToYouTubeHistoryKey = booleanPreferencesKey("syncPlaybackToYouTubeHistory")
 val DisableScreenshotKey = booleanPreferencesKey("disableScreenshot")
-
-val PinLastFmCardKey = booleanPreferencesKey("pinLastFmCard")
-val PinDiscordCardKey = booleanPreferencesKey("pinDiscordCard")
 
 val LastFmPreferYtThumbnailsKey = booleanPreferencesKey("lastfmPreferYtThumbnails")
 
@@ -700,7 +715,6 @@ val QuickPicksKey = stringPreferencesKey("discover")
 
 val NewsLastReadTimestampKey = longPreferencesKey("news_last_read_timestamp")
 val SpeedDialSongIdsKey = stringPreferencesKey("speedDialSongIds")
-val PreferredLyricsProviderKey = stringPreferencesKey("lyricsProvider")
 val LyricsProviderOrderKey = stringPreferencesKey("lyricsProviderOrder")
 val ArtworkProviderOrderKey = stringPreferencesKey("artworkProviderOrder")
 val QueueEditLockKey = booleanPreferencesKey("queueEditLock")
@@ -863,28 +877,49 @@ enum class QuickPicks {
 }
 
 enum class PreferredLyricsProvider {
+    LRC_RED,
+    BINI_LYRICS,
     BETTER_LYRICS,
     BETTER_LYRICS_PORTATO,
+    PAXSENIX,
+    PAXSENIX_SPOTIFY,
+    PAXSENIX_MUSIXMATCH,
     YOULY_PLUS,
-    LRCLIB,
-    KUGOU,
+    SIMP_MUSIC,
 
     UNISON,
 
+    LRCLIB,
+    KUGOU,
+    MEGALOBIZ,
+
     APPLE_MUSIC,
     MUSIXMATCH_EXPERIMENTAL,
+    GENIUS,
 }
 
 val DefaultLyricsProviderOrder =
     listOf(
+        PreferredLyricsProvider.LRC_RED,
+        PreferredLyricsProvider.BINI_LYRICS,
         PreferredLyricsProvider.BETTER_LYRICS,
         PreferredLyricsProvider.BETTER_LYRICS_PORTATO,
+        PreferredLyricsProvider.PAXSENIX,
+        PreferredLyricsProvider.PAXSENIX_SPOTIFY,
+        PreferredLyricsProvider.PAXSENIX_MUSIXMATCH,
         PreferredLyricsProvider.YOULY_PLUS,
+        PreferredLyricsProvider.SIMP_MUSIC,
+
+        PreferredLyricsProvider.UNISON,
+
         PreferredLyricsProvider.LRCLIB,
         PreferredLyricsProvider.KUGOU,
-        PreferredLyricsProvider.UNISON,
+        PreferredLyricsProvider.MEGALOBIZ,
+
         PreferredLyricsProvider.APPLE_MUSIC,
         PreferredLyricsProvider.MUSIXMATCH_EXPERIMENTAL,
+
+        PreferredLyricsProvider.GENIUS,
     )
 
 fun deserializeLyricsProviderOrder(orderStr: String?): List<PreferredLyricsProvider> {
@@ -972,6 +1007,10 @@ enum class PlayerDesignStyle {
     LOOPER,
 }
 
+val FlamingoShowVolumeBarKey = booleanPreferencesKey("flamingoNowPlayingShowVolumeBar")
+val FlamingoHideSlideBarKey = booleanPreferencesKey("flamingoNowPlayingHideSlideBar")
+val FlamingoBackgroundEffectKey = booleanPreferencesKey("flamingoNowPlayingBackgroundEffect")
+
 enum class PlayerBackgroundStyle {
     DEFAULT,
     GRADIENT,
@@ -1010,6 +1049,15 @@ val NavigationBarFrostedBlurKey = booleanPreferencesKey("navigationBarFrostedBlu
 
 val NavigationBarTintFrostedBlurKey = booleanPreferencesKey("navigationBarTintFrostedBlur")
 val HideNavigationBarLabelsKey = booleanPreferencesKey("hideNavigationBarLabels")
+val AddToPlaylistSortKey = stringPreferencesKey("addToPlaylistSort")
+
+enum class NavigationBarCompactBehavior {
+    ADAPTIVE,
+    ALWAYS_EXPANDED,
+    ALWAYS_COMPACT,
+}
+
+val NavigationBarCompactBehaviorKey = stringPreferencesKey("navigationBarCompactBehavior")
 
 val NavigationBarWidthKey = floatPreferencesKey("navigationBarWidth")
 const val NAVIGATION_BAR_WIDTH_DEFAULT = 0.8f
@@ -1031,27 +1079,37 @@ const val NAVIGATION_BAR_CORNER_RADIUS_DEFAULT = 28f
 
 val HideScrollbarKey = booleanPreferencesKey("hideScrollbar")
 
-val HideSearchChromeWhileScrollingKey = booleanPreferencesKey("hideSearchChromeWhileScrolling")
 
 val PlayerCustomImageUriKey = stringPreferencesKey("playerCustomImageUri")
 val PlayerCustomBlurKey = floatPreferencesKey("playerCustomBlur")
 val PlayerCustomContrastKey = floatPreferencesKey("playerCustomContrast")
 val PlayerCustomBrightnessKey = floatPreferencesKey("playerCustomBrightness")
 
-val LyricsAnimationStyleKey = stringPreferencesKey("lyricsAnimationStyle")
-
-enum class LyricsAnimationStyle {
-    NONE,
-    FADE,
-    GLOW,
-    SLIDE,
-    KARAOKE,
-    APPLE,
-}
-
 val LyricsTextSizeKey = floatPreferencesKey("lyricsTextSize")
 val LyricsLineSpacingKey = floatPreferencesKey("lyricsLineSpacing")
 val LyricsLineBlurKey = booleanPreferencesKey("lyricsLineBlur")
+
+val EnhancedLyricsStyleKey = stringPreferencesKey("enhancedLyricsStyle")
+
+enum class EnhancedLyricsStyle(val displayName: String) {
+    ACCOMPANIST("Accompanist"),
+    SPICY_MOBILE("Spicy Mobile"),
+}
+
+val OverscrollStyleKey = stringPreferencesKey("overscrollStyle")
+
+enum class OverscrollStyle {
+    IOS_RUBBER_BAND,
+    ANDROID_STRETCH,
+    OFF,
+}
+
+val OverscrollRubberBandTensionKey = floatPreferencesKey("overscrollRubberBandTension")
+val OverscrollBounceStiffnessKey = floatPreferencesKey("overscrollBounceStiffness")
+
+val BackAnimationStyleKey = stringPreferencesKey("backAnimationStyle")
+
+enum class BackAnimationStyle { DEFAULT, PREDICTIVE }
 
 val ShowLyricsPlayerControlsKey = booleanPreferencesKey("showLyricsPlayerControls")
 val AutoHideLyricsPlayerControlsKey = booleanPreferencesKey("autoHideLyricsPlayerControls")
@@ -1083,8 +1141,6 @@ val LyricsRomanizeKoreanKey = booleanPreferencesKey("lyricsRomanizeKorean")
 val LyricsRomanizeChineseKey = booleanPreferencesKey("lyricsRomanizeChinese")
 val LyricsRomanizeHindiKey = booleanPreferencesKey("lyricsRomanizeHindi")
 val LyricsRomanizeOtherLanguagesKey = booleanPreferencesKey("lyricsRomanizeOtherLanguages")
-val TranslateLyricsKey = booleanPreferencesKey("translateLyrics")
-val UseLyricsV2Key = booleanPreferencesKey("useLyricsV2")
 val LyricsModeKey = stringPreferencesKey("lyricsMode")
 val LyricsV2BounceFactorKey = floatPreferencesKey("lyricsV2BounceFactor")
 val LyricsV2GlowFactorKey = floatPreferencesKey("lyricsV2GlowFactor")
@@ -1097,7 +1153,6 @@ enum class LyricsMode {
     SPOTIFY,
 }
 
-val PreloadQueueLyricsEnabledKey = booleanPreferencesKey("preload_queue_lyrics_enabled")
 val QueueLyricsPreloadCountKey = intPreferencesKey("queue_lyrics_preload_count")
 
 val PlayerVolumeKey = floatPreferencesKey("playerVolume")
@@ -1119,6 +1174,7 @@ enum class SearchProvider {
     YOUTUBE,
     SPOTIFY,
     APPLE_MUSIC,
+    SOUNDCLOUD,
 }
 
 enum class SearchSource {
@@ -1173,7 +1229,6 @@ val TidalCookieKey = stringPreferencesKey("tidalCookie")
 val TidalEnabledKey = booleanPreferencesKey("tidalEnabled")
 val TidalAudioQualityKey = stringPreferencesKey("tidalAudioQuality")
 val TidalArtworkFallbackEnabledKey = booleanPreferencesKey("tidalArtworkFallbackEnabled")
-val TidalAnimatedCoversEnabledKey = booleanPreferencesKey("tidalAnimatedCoversEnabled")
 val TidalAccountNameKey = stringPreferencesKey("tidal_account_name")
 
 val TidalInstancesKey = stringPreferencesKey("tidalInstances")
@@ -1285,6 +1340,8 @@ enum class AudioSourceType {
     DEEZER,
     APPLE,
     JIOSAAVN,
+    SOUNDCLOUD,
+    SPOTIFY,
     YOUTUBE,
 }
 
@@ -1299,6 +1356,50 @@ val SongSourceTidalTrackIdKey = stringPreferencesKey("songSourceTidalTrackId")
 
 val SongSourceQobuzBackupVideoIdKey = stringPreferencesKey("songSourceQobuzBackupVideoId")
 
+val SoundCloudEnabledKey = booleanPreferencesKey("soundcloudEnabled")
+
+val SoundCloudAudioQualityKey = stringPreferencesKey("soundcloudAudioQuality")
+
+enum class SoundCloudAudioQuality {
+    MP3_128,
+    AAC_96,
+    AAC_160,
+}
+
+val SoundCloudAudioQualityOptions = listOf(
+    SoundCloudAudioQuality.MP3_128,
+    SoundCloudAudioQuality.AAC_96,
+    SoundCloudAudioQuality.AAC_160,
+)
+
+val SoundCloudAuthTokenKey = stringPreferencesKey("soundcloudAuthToken")
+
+val SpotifyDirectEnabledKey = booleanPreferencesKey("spotifyDirectEnabled")
+
+val SpotifyDirectQualityKey = stringPreferencesKey("spotifyDirectQuality")
+
+enum class SpotifyDirectQuality {
+    AAC_128,
+}
+
+val SpotifyDirectQualityOptions = listOf(
+    SpotifyDirectQuality.AAC_128,
+)
+
+val SpotifyResolveMethodKey = stringPreferencesKey("spotifyResolveMethod")
+
+enum class SpotifyResolveMethod {
+    STOPIFY,
+    ECHO,
+}
+
+val SpotifyResolveMethodOptions = listOf(
+    SpotifyResolveMethod.STOPIFY,
+    SpotifyResolveMethod.ECHO,
+)
+
+val SpotifyDeviceIdKey = stringPreferencesKey("spotifyDeviceId")
+
 val AudioSearchSourceKey = stringPreferencesKey("audioSearchSource")
 
 val TidalAccountFirstKey = booleanPreferencesKey("tidalAccountFirst")
@@ -1312,6 +1413,10 @@ val DeezerArlKey = stringPreferencesKey("deezerArl")
 val DeezerAccountNameKey = stringPreferencesKey("deezerAccountName")
 
 val DeezerAccountPremiumKey = booleanPreferencesKey("deezerAccountPremium")
+
+val DeezerInstancesKey = stringPreferencesKey("deezerInstances")
+
+val EnableDeezerLyricsKey = booleanPreferencesKey("enableDeezerLyrics")
 
 val JioSaavnEnabledKey = booleanPreferencesKey("enableSaavnStreaming")
 
@@ -1507,3 +1612,7 @@ enum class VideoAspectRatio {
 }
 
 val VideoAspectRatioKey = stringPreferencesKey("videoAspectRatio")
+
+val RecommendationsEnabledKey = booleanPreferencesKey("recommendationsEnabled")
+
+val RecommendationRecencyWeightKey = floatPreferencesKey("recommendationRecencyWeight")

@@ -83,6 +83,13 @@ object AiTextService {
         }
 
     suspend fun test(config: AiServiceConfig) {
+        if (config.provider == AiProvider.DEEPL) {
+            val translated = translateWithDeepL(config, "English", listOf("OK"))
+            if (translated.isEmpty() || translated[0].isBlank()) {
+                throw AiServiceException("DeepL returned an empty test response")
+            }
+            return
+        }
         val response =
             complete(
                 config = config.copy(model = config.model.ifBlank { defaultModelFor(config.provider) }),
@@ -103,6 +110,11 @@ object AiTextService {
         formatName: String,
     ): List<String> {
         if (lines.isEmpty()) return emptyList()
+        if (config.provider == AiProvider.DEEPL) {
+            return AiRateLimiter.withLimit(AiRateLimiter.Feature.LYRICS_TRANSLATION) {
+                translateWithDeepL(config, targetLanguage, lines)
+            }
+        }
         val payload = JSONArray()
         lines.forEach { payload.put(it) }
         val response =
@@ -207,7 +219,7 @@ object AiTextService {
 
             AiProvider.OPENROUTER -> {
                 completeOpenAiCompatible(
-                    endpoint = OpenRouterEndpoint,
+                    endpoint = config.customEndpoint.ifBlank { OpenRouterEndpoint },
                     apiKey = config.apiKey,
                     model = model,
                     systemPrompt = systemPrompt,
@@ -369,6 +381,67 @@ object AiTextService {
 
             AiProvider.DEEPL, AiProvider.NONE -> throw AiServiceException("AI provider is disabled")
         }
+
+    private fun deepLEndpoint(apiKey: String): String =
+        if (apiKey.endsWith(":fx")) {
+            "https://api-free.deepl.com/v2/translate"
+        } else {
+            "https://api.deepl.com/v2/translate"
+        }
+
+    private fun deepLLanguageCode(language: String): String =
+        when (language.trim().uppercase()) {
+            "ENGLISH", "EN", "EN-US", "EN-GB" -> "EN-US"
+            "PORTUGUESE", "PT", "PT-BR" -> "PT-BR"
+            "CHINESE", "ZH", "ZH-CN", "ZH-TW" -> "ZH"
+            "CHINESE (SIMPLIFIED)", "CHINESE_SIMPLIFIED" -> "ZH"
+            else ->
+                language
+                    .trim()
+                    .uppercase()
+                    .take(2)
+                    .takeIf { it.length == 2 && it[0].isLetter() }
+                    ?: "EN-US"
+        }
+
+    private suspend fun translateWithDeepL(
+        config: AiServiceConfig,
+        targetLanguage: String,
+        lines: List<String>,
+    ): List<String> {
+        if (config.apiKey.isBlank()) {
+            throw AiServiceException("DeepL API key is not configured")
+        }
+        val texts = JSONArray()
+        lines.forEach { texts.put(it) }
+        val body = JSONObject()
+            .put("text", texts)
+            .put("target_lang", deepLLanguageCode(targetLanguage))
+        if (config.deepLFormality.isNotBlank() && config.deepLFormality != "default") {
+            body.put("formality", config.deepLFormality)
+        }
+        val response =
+            try {
+                client.post(deepLEndpoint(config.apiKey)) {
+                    header("Authorization", "DeepL-Auth-Key ${config.apiKey}")
+                    contentType(ContentType.Application.Json)
+                    setBody(body.toString())
+                }.bodyAsText()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                if (isConnectionLevelFailure(t)) recreateClientOnFailure(t)
+                throw AiServiceException("DeepL request failed: ${t.message}", t)
+            }
+        val translations =
+            runCatching { JSONObject(response).optJSONArray("translations") }
+                .getOrNull()
+                ?: throw AiServiceException("DeepL returned no translations")
+        if (translations.length() < lines.size) {
+            throw AiServiceException("DeepL returned fewer lines than requested")
+        }
+        return List(lines.size) { index -> translations.getJSONObject(index).optString("text") }
+    }
 
     private suspend fun fetchOpenAiModels(
         endpoint: String,

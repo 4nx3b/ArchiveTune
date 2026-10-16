@@ -87,13 +87,11 @@ class StretchAudioProcessor @Inject constructor() : AudioProcessor {
     override fun queueInput(inputBuffer: ByteBuffer) {
         val h = handle
         if (h == 0L || !engaged) {
-
             wasEngaged = false
             passThrough(inputBuffer)
             return
         }
         if (!wasEngaged) {
-
             if (!StretchNative.nativeReset(h)) {
                 passThrough(inputBuffer)
                 return
@@ -199,7 +197,6 @@ class StretchAudioProcessor @Inject constructor() : AudioProcessor {
                 nativeOut = ByteBuffer.allocateDirect(bytes).order(ByteOrder.nativeOrder())
             }
         } else if (handle != 0L) {
-
             StretchNative.nativeReset(handle)
         }
     }

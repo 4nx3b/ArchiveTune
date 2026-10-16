@@ -63,12 +63,6 @@ internal class AudioProcessorChain(
         if (changed) Log.i(TAG, "membership changed -> ${membership()}")
     }
 
-    /**
-     * Forwards end-of-stream to every active stage (VariRate flushes its
-     * sinc-kernel tail at EOS) and then drains the chain once more with an
-     * empty input so the tail reaches the caller instead of dying inside
-     * the stage that produced it.
-     */
     fun queueEndOfStreamAndDrain(): ByteBuffer {
         for (i in processors.indices) {
             if (!active[i]) continue

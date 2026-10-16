@@ -35,37 +35,69 @@ data class BackdropTonePalette(
         fun fromColorsLight(
             colors: List<Color>,
             fallbackColor: Int,
+            darkTheme: Boolean,
         ): BackdropTonePalette {
             val sourceColor = colors.firstOrNull()
-            val fallback = Color(fallbackColor).backdropTone(
-                valueMin = 0.12f,
-                valueMax = 0.38f,
-                saturationScale = 0.45f,
-                saturationCap = 0.30f,
-            )
-            val top = sourceColor?.backdropTone(
-                valueMin = 0.32f,
-                valueMax = 0.66f,
-                saturationScale = 0.45f,
-                saturationCap = 0.30f,
-            ) ?: fallback
-            val mid = sourceColor?.backdropTone(
-                valueMin = 0.24f,
-                valueMax = 0.52f,
-                saturationScale = 0.45f,
-                saturationCap = 0.30f,
-            ) ?: top
-            val bottom = sourceColor?.backdropTone(
-                valueMin = 0.15f,
-                valueMax = 0.38f,
-                saturationScale = 0.45f,
-                saturationCap = 0.30f,
-            ) ?: mid
-            return BackdropTonePalette(
-                top = top,
-                mid = mid,
-                bottom = bottom,
-            )
+            if (darkTheme) {
+                val fallback =
+                    Color(fallbackColor).backdropTone(
+                        valueMin = 0.12f,
+                        valueMax = 0.38f,
+                        saturationScale = 0.45f,
+                        saturationCap = 0.30f,
+                    )
+                val top =
+                    sourceColor?.backdropTone(
+                        valueMin = 0.32f,
+                        valueMax = 0.66f,
+                        saturationScale = 0.45f,
+                        saturationCap = 0.30f,
+                    ) ?: fallback
+                val mid =
+                    sourceColor?.backdropTone(
+                        valueMin = 0.24f,
+                        valueMax = 0.52f,
+                        saturationScale = 0.45f,
+                        saturationCap = 0.30f,
+                    ) ?: top
+                val bottom =
+                    sourceColor?.backdropTone(
+                        valueMin = 0.15f,
+                        valueMax = 0.38f,
+                        saturationScale = 0.45f,
+                        saturationCap = 0.30f,
+                    ) ?: mid
+                return BackdropTonePalette(top = top, mid = mid, bottom = bottom)
+            }
+            val fallback =
+                Color(fallbackColor).backdropTone(
+                    valueMin = 0.72f,
+                    valueMax = 0.98f,
+                    saturationScale = 0.45f,
+                    saturationCap = 0.30f,
+                )
+            val top =
+                sourceColor?.backdropTone(
+                    valueMin = 0.88f,
+                    valueMax = 0.98f,
+                    saturationScale = 0.45f,
+                    saturationCap = 0.30f,
+                ) ?: fallback
+            val mid =
+                sourceColor?.backdropTone(
+                    valueMin = 0.82f,
+                    valueMax = 0.96f,
+                    saturationScale = 0.45f,
+                    saturationCap = 0.30f,
+                ) ?: top
+            val bottom =
+                sourceColor?.backdropTone(
+                    valueMin = 0.74f,
+                    valueMax = 0.92f,
+                    saturationScale = 0.45f,
+                    saturationCap = 0.30f,
+                ) ?: mid
+            return BackdropTonePalette(top = top, mid = mid, bottom = bottom)
         }
     }
 }

@@ -10,9 +10,9 @@ package moe.rukamori.archivetune.ui.screens.search
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -64,6 +64,7 @@ import moe.rukamori.archivetune.applemusic.AppleMusicSearchItem
 import moe.rukamori.archivetune.constants.SearchProvider
 import moe.rukamori.archivetune.constants.SearchSource
 import moe.rukamori.archivetune.constants.ListThumbnailSize
+import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadius
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
@@ -154,14 +155,13 @@ internal fun AppleMusicOnlineSearchResult(
     Box(
         modifier =
             Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
+                .fillMaxSize(),
     ) {
-
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surface)
                     .searchResultsBarSource(barState),
         ) {
             when {
@@ -172,7 +172,12 @@ internal fun AppleMusicOnlineSearchResult(
                             .padding(top = systemBarsTopPadding + 4.dp),
                     ) {
                         header()
-                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                            contentAlignment = Alignment.Center,
+                        ) {
                             CircularProgressIndicator()
                         }
                     }
@@ -292,7 +297,6 @@ internal fun AppleMusicOnlineSearchResult(
             onBackLongClick = { navController.backToMain() },
             placeholder = stringResource(R.string.search_source_apple_music),
             bottomPadding = playerAwareBottomPadding,
-            lazyListState = lazyListState,
             trailing = {
                 SearchSourcePicker(
                     currentScope = SearchSource.ONLINE,
@@ -355,7 +359,13 @@ private fun AppleMusicSearchResultRow(
                                     AppleMusicPlaybackResolver.resolveTrack(item)
                                 }
                             if (song != null) {
-                                playerConnection.playQueue(YouTubeQueue.radio(song.toMediaMetadata()))
+                                playerConnection.playQueue(
+                                    YouTubeQueue.radio(
+                                        song.toMediaMetadata().copy(
+                                            preferredSource = AudioSourceType.APPLE.name,
+                                        ),
+                                    ),
+                                )
                             } else {
                                 Toast.makeText(
                                     context,

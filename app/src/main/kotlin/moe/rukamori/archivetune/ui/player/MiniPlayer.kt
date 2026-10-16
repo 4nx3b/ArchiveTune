@@ -93,7 +93,6 @@ fun MiniPlayer(
     compactReserveEndControl: Boolean = true,
     onArtworkSlotPositioned: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
 ) {
-
     val compactFraction = compactFractionState.value
 
     val compactStartInset = compactHorizontalPadding + CompactControlSize + CompactControlGap

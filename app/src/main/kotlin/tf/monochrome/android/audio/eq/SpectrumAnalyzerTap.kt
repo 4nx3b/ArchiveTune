@@ -252,7 +252,6 @@ class SpectrumAnalyzerTap @Inject constructor(
         val startPos = inputBuffer.position()
 
         if (analysisActive) {
-
             val ringLocal = ring
             val ringLen = ringLocal.size
             var w = ringWrite

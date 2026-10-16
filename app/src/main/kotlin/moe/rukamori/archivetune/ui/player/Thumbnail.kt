@@ -92,6 +92,7 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
+import moe.rukamori.archivetune.canvas.procedural.ProceduralArtworkFallback
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.BackdropBlurAmountKey
 import moe.rukamori.archivetune.constants.BackdropEnabledKey
@@ -604,11 +605,13 @@ fun Thumbnail(
                                                     ),
                                         )
                                     } else if (thumbnailBgBlurEnabled) {
-                                        ThumbnailBgBlurApi30(
-                                            imageUrl = displayUrl,
-                                            blurAmount = backdropBlurAmount,
-                                            shouldCropArtwork = shouldCropArtwork,
-                                        )
+                                        Box(Modifier.matchParentSize()) {
+                                            ThumbnailBgBlurApi30(
+                                                imageUrl = displayUrl,
+                                                blurAmount = backdropBlurAmount,
+                                                shouldCropArtwork = shouldCropArtwork,
+                                            )
+                                        }
                                     } else {
                                         AsyncImage(
                                             model = thumbnailBgRequest,
@@ -645,6 +648,13 @@ fun Thumbnail(
                                         CanvasArtworkPlayer(
                                             primaryUrl = primaryCanvasUrl,
                                             fallbackUrl = fallbackCanvasUrl,
+                                            isPlaying = isPlaying,
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
+                                    } else if (!isCurrentMusicVideo) {
+
+                                        ProceduralArtworkFallback(
+                                            artworkUrl = displayUrl,
                                             isPlaying = isPlaying,
                                             modifier = Modifier.fillMaxSize(),
                                         )

@@ -129,7 +129,6 @@ class HeadphoneAutoEqApi {
     ): Result<String> =
         withContext(Dispatchers.IO) {
             try {
-
                 val headphone = cachedHeadphones?.find {
                     it.id.equals(headphoneId, ignoreCase = true) ||
                         it.name.equals(headphoneName, ignoreCase = true)

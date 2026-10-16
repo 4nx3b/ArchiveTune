@@ -143,6 +143,14 @@ private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
             "tidal_audio_quality", "tidal_animated_covers", "tidal_manage_instances",
             "qobuz_enable", "qobuz_audio_quality", "qobuz_backup_enable", "qobuz_manage_instances",
             "deezer_enable", "deezer_audio_quality", "jiosaavn_enable", "jiosaavn_audio_quality",
+            "soundcloud_enable", "soundcloud_audio_quality", "soundcloud_auth_token",
+            "spotify_direct_enable", "spotify_direct_quality",
+        )
+        own(
+            "canvas", "playback",
+            "archive_tune_canvas", "spotify_canvas", "album_canvas_enabled", "canvas_resolvers",
+            "canvas_check", "tidal_artwork_fallback", "artwork_priority", "procedural_artwork",
+            "procedural_artwork_style", "canvas_audio_reactive",
         )
         own("sources", "deezer", "deezer_enable", "deezer_audio_quality")
         own("qobuz", "sources", "qobuz")
@@ -168,11 +176,13 @@ private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): Stri
             "liquid_glass" -> "settings/appearance/liquid_glass"
 
             "playback" -> "settings/player"
+            "canvas" -> "settings/player/canvas"
             "audiophile" -> "settings/player/audiophile"
             "sources" -> "settings/sources"
             "android_auto" -> "settings/android_auto"
             "jiosaavn" -> "settings/jiosaavn"
             "deezer" -> "settings/deezer"
+            "applemusic" -> "settings/applemusic"
             "lyrics" -> "settings/lyrics"
             "lyrics_providers" -> "settings/lyrics/providers"
             "lyrics_romanisation" -> "settings/lyrics/romanisation"
@@ -458,7 +468,6 @@ fun SettingsScreen(
                     onBackLongClick = navController::backToMain,
                     placeholder = stringResource(R.string.search_settings),
                     bottomPadding = playerAwareBottomPadding,
-                    lazyListState = listState,
                     activationTick = searchActivationTick,
                     trailing = {
                         if (searchQuery.isNotEmpty()) {

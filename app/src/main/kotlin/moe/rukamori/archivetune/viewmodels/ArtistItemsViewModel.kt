@@ -14,6 +14,8 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.constants.HideExplicitKey
@@ -40,6 +42,9 @@ class ArtistItemsViewModel
         savedStateHandle: SavedStateHandle,
     ) : ViewModel() {
         private val browseId = savedStateHandle.get<String>("browseId")!!
+        val routeArtistId: String = savedStateHandle.get<String>("artistId") ?: browseId
+        val songsSection: Boolean =
+            savedStateHandle.get<String>("songs")?.equals("true", ignoreCase = true) == true
         private val params =
             savedStateHandle
                 .get<String>("params")
@@ -53,6 +58,11 @@ class ArtistItemsViewModel
         val title = MutableStateFlow(routeTitle.orEmpty())
         val itemsPage = MutableStateFlow<ItemsPage?>(null)
         val itemsLayout = MutableStateFlow(ArtistItemsPageLayout.LIST)
+
+        val artist =
+            database
+                .artist(routeArtistId)
+                .stateIn(viewModelScope, SharingStarted.Lazily, null)
 
         init {
             viewModelScope.launch {

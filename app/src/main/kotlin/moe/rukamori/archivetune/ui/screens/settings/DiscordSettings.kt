@@ -474,7 +474,8 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
                     .hazeSource(headerHaze)
                     .padding(
                         top = innerPadding.calculateTopPadding() + 16.dp,
-                        bottom = 32.dp,
+
+                        bottom = playerAwareBottomPadding + 32.dp,
                     ),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
@@ -1207,52 +1208,6 @@ private fun discordLargeTextSourceLabel(value: String): String =
         "dontshow" -> stringResource(R.string.dont_show)
         else -> value
     }
-
-@Composable
-fun EditablePreference(
-    title: String,
-    iconRes: Int,
-    value: String,
-    defaultValue: String,
-    onValueChange: (String) -> Unit,
-    description: String? = null,
-) {
-    var showDialog by remember { mutableStateOf(false) }
-    PreferenceEntry(
-        title = { Text(title) },
-        description = description ?: if (value.isEmpty()) defaultValue else value,
-        icon = { Icon(painterResource(iconRes), null) },
-        trailingContent = {
-            TextButton(onClick = { showDialog = true }, shapes = ButtonDefaults.shapes()) { Text("Edit") }
-        },
-    )
-    if (showDialog) {
-        var text by remember { mutableStateOf(value) }
-        AlertDialog(
-            onDismissRequest = { showDialog = false },
-            confirmButton = {
-                KeepStatusBarHiddenInDialog()
-                TextButton(onClick = {
-                    onValueChange(if (text.isBlank()) "" else text)
-                    showDialog = false
-                }, shapes = ButtonDefaults.shapes()) { Text("Save") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDialog = false }, shapes = ButtonDefaults.shapes()) { Text("Cancel") }
-            },
-            title = { Text("Edit $title") },
-            text = {
-                TextField(
-                    value = text,
-                    onValueChange = { text = it },
-                    placeholder = { Text(defaultValue) },
-                    singleLine = true,
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                )
-            },
-        )
-    }
-}
 
 @Composable
 fun RichPresence(

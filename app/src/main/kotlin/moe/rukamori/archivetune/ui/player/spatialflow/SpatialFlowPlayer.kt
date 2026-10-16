@@ -159,7 +159,6 @@ fun SpatialFlowPlayerContent(
     isLoading: Boolean,
     canSkipPrevious: Boolean,
     canSkipNext: Boolean,
-    position: Long,
     duration: Long,
     playerConnection: PlayerConnection,
     navController: NavController,
@@ -178,6 +177,7 @@ fun SpatialFlowPlayerContent(
     onPagerArtworkActiveChange: ((Boolean) -> Unit)? = null,
     onLyricsOpenChange: ((Boolean) -> Unit)? = null,
     onQueueExpandedChange: ((Boolean) -> Unit)? = null,
+    externalBackRequests: androidx.compose.runtime.MutableIntState? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -319,6 +319,20 @@ fun SpatialFlowPlayerContent(
             lyricsModeEnabled = false
         } else if (queueExpanded) {
             queueExpanded = false
+        }
+    }
+
+    LaunchedEffect(state.isExpandedOrExpanding) {
+        if (!state.isExpandedOrExpanding && (lyricsModeEnabled || queueExpanded)) {
+            lyricsModeEnabled = false
+            queueExpanded = false
+        }
+    }
+    val externalBackEpoch = externalBackRequests?.intValue ?: 0
+    LaunchedEffect(externalBackEpoch) {
+        if (externalBackEpoch > 0) {
+            if (lyricsModeEnabled) lyricsModeEnabled = false
+            if (queueExpanded) queueExpanded = false
         }
     }
 
@@ -524,7 +538,7 @@ fun SpatialFlowPlayerContent(
 
                     IconButton(
                         onClick = {
-                            menuState.show {
+                            menuState.showImmersive {
                                 PlayerMenu(
                                     mediaMetadata = mediaMetadata,
                                     navController = navController,

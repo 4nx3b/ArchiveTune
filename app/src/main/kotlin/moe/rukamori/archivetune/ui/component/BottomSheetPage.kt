@@ -7,7 +7,6 @@
 
 package moe.rukamori.archivetune.ui.component
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -38,13 +37,14 @@ import androidx.compose.material3.NavigationBarDefaults
 import androidx.compose.material3.ShapeDefaults
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,6 +53,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import moe.rukamori.archivetune.ui.utils.top
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
@@ -65,6 +67,7 @@ class BottomSheetPageState(
 ) {
     var isVisible by mutableStateOf(isVisible)
     var content by mutableStateOf(content)
+    var contentOnScreen by mutableStateOf(false)
 
     fun show(content: @Composable ColumnScope.() -> Unit) {
         isVisible = true
@@ -84,11 +87,27 @@ fun BottomSheetPage(
     contentWindowInsets: WindowInsets = WindowInsets.navigationBars,
 ) {
     val focusManager = LocalFocusManager.current
-    val coroutineScope = rememberCoroutineScope()
     var dragOffset by remember { mutableFloatStateOf(0f) }
 
-    BackHandler(enabled = state.isVisible) {
-        state.dismiss()
+    val dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+    val dismissUpdated by rememberUpdatedState(state::dismiss)
+    val backCallback = remember {
+        object : OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() {
+                dismissUpdated()
+            }
+        }
+    }
+    val sheetActive = state.isVisible || state.contentOnScreen
+    DisposableEffect(dispatcher, sheetActive) {
+        if (sheetActive && dispatcher != null) {
+            backCallback.isEnabled = true
+            dispatcher.addCallback(backCallback)
+        }
+        onDispose {
+            backCallback.isEnabled = false
+            backCallback.remove()
+        }
     }
 
     AnimatedVisibility(
@@ -122,6 +141,10 @@ fun BottomSheetPage(
             ),
         modifier = modifier,
     ) {
+        DisposableEffect(Unit) {
+            state.contentOnScreen = true
+            onDispose { state.contentOnScreen = false }
+        }
         Column(
             modifier =
                 Modifier

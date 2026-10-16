@@ -8,9 +8,9 @@
 package moe.rukamori.archivetune.ui.screens.search
 
 import android.widget.Toast
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -164,14 +164,13 @@ internal fun SpotifyOnlineSearchResult(
     Box(
         modifier =
             Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
+                .fillMaxSize(),
     ) {
-
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surface)
                     .searchResultsBarSource(barState),
         ) {
             when {
@@ -182,7 +181,12 @@ internal fun SpotifyOnlineSearchResult(
                             .padding(top = systemBarsTopPadding + 4.dp),
                     ) {
                         header()
-                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                            contentAlignment = Alignment.Center,
+                        ) {
                             CircularProgressIndicator()
                         }
                     }
@@ -305,7 +309,6 @@ internal fun SpotifyOnlineSearchResult(
             onBackLongClick = { navController.backToMain() },
             placeholder = stringResource(R.string.search_source_spotify),
             bottomPadding = playerAwareBottomPadding,
-            lazyListState = lazyListState,
             trailing = {
                 SearchSourcePicker(
                     currentScope = SearchSource.ONLINE,

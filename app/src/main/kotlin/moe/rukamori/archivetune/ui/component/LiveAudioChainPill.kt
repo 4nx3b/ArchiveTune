@@ -160,7 +160,6 @@ fun rememberLiveAudioChainLabels(): LiveAudioChainLabels {
         }
 
         floatRouteActive && sinkDecodedEncoding == C.ENCODING_PCM_FLOAT -> {
-
             outputBits = floatWithDepthLabel
             outputRate = sinkOutputRateLabel ?: inputRate
         }
@@ -290,7 +289,6 @@ fun LiveAudioChainPill(
     val shimmerProgress = remember { Animatable(0f) }
     LaunchedEffect(labels.hasSignal) {
         if (labels.hasSignal) {
-
             while (true) {
                 shimmerProgress.animateTo(1f, tween(2_600, easing = EaseInOutSine))
                 shimmerProgress.animateTo(0f, tween(2_600, easing = EaseInOutSine))

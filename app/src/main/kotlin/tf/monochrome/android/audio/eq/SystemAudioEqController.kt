@@ -49,10 +49,6 @@ class SystemAudioEqController @Inject constructor(
     private val _active = MutableStateFlow(false)
     val active: StateFlow<Boolean> = _active.asStateFlow()
 
-    /** The global effect may only run while the Tryptify ENGINE owns the
-     *  chain. Switching to LastWave (or no engine) previously left the
-     *  device-global DynamicsProcessing attached — the user kept hearing
-     *  Tryptify's curve over every other engine's output. */
     @Volatile
     private var engineActive = true
 
@@ -178,7 +174,6 @@ class SystemAudioEqController @Inject constructor(
     }
 
     private fun applyEqualizerLocked(bands: List<EqBand>, preamp: Float): Boolean {
-
         val eq = equalizer ?: Equalizer(GLOBAL_PRIORITY, GLOBAL_SESSION)
         val range = eq.bandLevelRange
         val minLevel = range[0].toInt()

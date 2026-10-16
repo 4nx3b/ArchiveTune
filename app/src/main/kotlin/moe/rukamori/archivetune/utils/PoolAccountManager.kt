@@ -126,6 +126,8 @@ object PoolAccountManager {
     val isEnabled: Boolean
         get() = BuildConfig.SOURCE_PROVIDER_URL.isNotBlank()
 
+    fun isPoolEnabled(): Boolean = isEnabled
+
     private val poolBaseUrl: String?
         get() {
             val raw = BuildConfig.SOURCE_PROVIDER_URL.trim()

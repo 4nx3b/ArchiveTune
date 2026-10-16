@@ -34,6 +34,23 @@ dependencyResolutionManagement {
                 releasesOnly()
             }
         }
+        // The accompanist lyrics libraries publish RC builds (2.0.0-rc.x) that
+        // mavenCentral's releasesOnly() filter refuses to serve, and the GCS
+        // Central mirror can lag a freshly published release by hours — route
+        // the group straight at repo1.maven.org so pre-release lyrics builds
+        // resolve the moment they exist.
+        exclusiveContent {
+            forRepository {
+                maven {
+                    name = "AccompanistCentral"
+                    setUrl("https://repo1.maven.org/maven2/")
+                }
+            }
+            filter {
+                includeGroup("com.mocharealm.accompanist")
+                includeGroup("com.mocharealm.gaze")
+            }
+        }
         exclusiveContent {
             forRepository {
                 maven {
@@ -54,6 +71,23 @@ dependencyResolutionManagement {
                 includeGroup("com.github.maxrave-dev")
                 includeGroup("com.github.maxrave-dev.PipePipeExtractor")
                 includeGroup("com.github.maxrave-dev.BravePipeExtractor")
+            }
+        }
+        // Media3 FFmpeg decoder extension (Dolby AC-4, DTS and other formats
+        // the platform decoders lack), prebuilt by the dmt project
+        // (github.com/imjyotiraditya/dmt-media3 — official androidx.media3
+        // ffmpeg module built with native libs). Scoped to ONLY the ffmpeg
+        // artifact: every other media3 module keeps resolving from
+        // Google Maven / the GCS mirror at the app's pinned version.
+        exclusiveContent {
+            forRepository {
+                maven {
+                    name = "DmtMedia3"
+                    setUrl("https://raw.githubusercontent.com/imjyotiraditya/dmt-media3/maven/maven")
+                }
+            }
+            filter {
+                includeModule("androidx.media3", "media3-decoder-ffmpeg")
             }
         }
     }

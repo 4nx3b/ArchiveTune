@@ -425,8 +425,11 @@ private fun InlineQueueRow(
             )
             Spacer(Modifier.width(4.dp))
         }
+        val thumbRequest = remember(song.thumbnailUrl) {
+            ImageRequest.Builder(context).data(song.thumbnailUrl).build()
+        }
         AsyncImage(
-            model = ImageRequest.Builder(context).data(song.thumbnailUrl).build(),
+            model = thumbRequest,
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier

@@ -71,6 +71,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
@@ -785,6 +786,17 @@ private suspend fun resolveExportMetadata(
     val dbThumb = songEntity?.song?.thumbnailUrl?.takeIf(String::isNotBlank)
     val thumbUrl = dbThumb ?: row.thumbnailUrl?.takeIf(String::isNotBlank)
 
+    val storedLyrics =
+        runCatching { database.lyrics(row.songId).firstOrNull() }.getOrNull()
+    val embeddedLyrics =
+        storedLyrics?.lyrics?.takeIf { it.isNotBlank() && it != moe.rukamori.archivetune.db.entities.LyricsEntity.LYRICS_NOT_FOUND }
+    val canvasUrl =
+        runCatching {
+            moe.rukamori.archivetune.ui.player.CanvasArtworkPlaybackCache
+                .getCachedOnlyFast(row.songId)
+                ?.preferredAnimationUrl
+        }.getOrNull()
+
     val hasFullMetadata = title != null && !dbArtistStr.isNullOrBlank() && thumbUrl != null
     if (hasFullMetadata) {
         val artworkBytes = thumbUrl?.let { fetchArtworkBytes(it) }
@@ -794,6 +806,8 @@ private suspend fun resolveExportMetadata(
             albumArtist = dbArtists?.firstOrNull(),
             album = dbAlbum,
             year = dbYear,
+            lyrics = embeddedLyrics,
+            canvasUrl = canvasUrl,
             artworkBytes = artworkBytes,
         )
     }
@@ -824,6 +838,8 @@ private suspend fun resolveExportMetadata(
         albumArtist = (dbArtists?.firstOrNull() ?: mediaInfo?.author)?.takeIf(String::isNotBlank),
         album = dbAlbum,
         year = dbYear,
+        lyrics = embeddedLyrics,
+        canvasUrl = canvasUrl,
         artworkBytes = artworkBytes,
     )
 }

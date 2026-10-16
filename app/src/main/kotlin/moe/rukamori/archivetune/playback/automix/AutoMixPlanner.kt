@@ -18,6 +18,9 @@ object AutoMixPlanner {
     private const val MAX_OVERLAP_BEATS = 16.0
     private const val MAX_OVERLAP_MS = 12_000L
     private const val END_GUARD_MS = 1_500L
+    private const val MAX_TRANSITION_LEAD_MS = 14_000L
+
+    private const val HARD_END_LEAD_MS = 3_500L
 
     fun plan(
         current: AutoMixAnalysis?,
@@ -145,6 +148,7 @@ object AutoMixPlanner {
         }
 
         val startMs = alignToDownbeat(current, outgoingAnchor)
+            .coerceAtLeast(outgoingAnchor)
         val endMs = startMs + overlapMs
 
         val rateAlignment =
@@ -231,12 +235,18 @@ object AutoMixPlanner {
             return onset
                 .coerceAtLeast(contentEnd - MAX_OVERLAP_MS)
                 .coerceAtMost(contentEnd - 1L)
+                .coerceAtLeast(earliestTransitionStart(track))
         }
 
-        return (contentEnd - fallbackFadeMs)
+        return (contentEnd - HARD_END_LEAD_MS.coerceAtMost(fallbackFadeMs))
             .coerceAtLeast(analysis.introEndMs.coerceAtLeast(0L))
+            .coerceAtLeast(earliestTransitionStart(track))
             .coerceAtLeast(0L)
+            .coerceAtMost((contentEnd - 1L).coerceAtLeast(0L))
     }
+
+    private fun earliestTransitionStart(track: AutoMixTrackInfo): Long =
+        (track.durationMs - MAX_TRANSITION_LEAD_MS).coerceAtLeast(0L)
 
     private fun dynamicFadeMs(
         analysis: AutoMixAnalysis,
@@ -321,15 +331,15 @@ object AutoMixPlanner {
         track: AutoMixTrackInfo,
         fallbackFadeMs: Long,
     ): Long {
-        val anchor: Long =
-            if (analysis != null) {
-                val contentEnd = analysis.contentEndMs.takeIf { it > 0L } ?: track.durationMs
-                analysis.finalFadeOnsetMs.takeIf { it > 0L && it < contentEnd }
-                    ?: analysis.outroStartMs
-                    ?: track.durationMs
-            } else {
-                track.durationMs
-            }
-        return (anchor - fallbackFadeMs).coerceAtLeast(0L)
+        val contentEnd = analysis?.contentEndMs?.takeIf { it > 0L } ?: track.durationMs
+        val silenceOnset = analysis?.finalFadeOnsetMs?.takeIf { it > 0L && it < contentEnd }
+
+        val anchor =
+            silenceOnset
+                ?: (contentEnd - HARD_END_LEAD_MS.coerceAtMost(fallbackFadeMs)).coerceAtLeast(0L)
+        return anchor
+            .coerceAtLeast(earliestTransitionStart(track))
+            .coerceAtLeast(0L)
+            .coerceAtMost((contentEnd - 1L).coerceAtLeast(0L))
     }
 }

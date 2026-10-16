@@ -1,0 +1,39 @@
+# ArchiveTune — Listen Together server systemd unit.
+#
+# Adapted from BitChord's Listen Together backend deploy files (GPL-3.0):
+# https://github.com/kushagrasinghx/BitChord
+#
+# Install:
+#   sudo cp deploy/listentogether-server.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now listentogether-server
+#
+# Build the binary first (as the service user or into /opt):
+#   go build -o /opt/listentogether-server/listentogether-server .
+
+[Unit]
+Description=ArchiveTune Listen Together server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=listentogether
+Group=listentogether
+WorkingDirectory=/opt/listentogether-server
+ExecStart=/opt/listentogether-server/listentogether-server
+Environment=PORT=8080
+# Environment=LT_MAX_MEMBERS=8
+# Environment=LT_ALLOWED_ORIGINS=https://listen.example.com
+Restart=always
+RestartSec=3
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=
+
+[Install]
+WantedBy=multi-user.target

@@ -14,7 +14,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
-import com.airbnb.lottie.LottieComposition
 import com.airbnb.lottie.LottieProperty
 import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionSpec
@@ -25,16 +24,6 @@ import com.airbnb.lottie.compose.rememberLottieDynamicProperties
 import com.airbnb.lottie.compose.rememberLottieDynamicProperty
 import moe.rukamori.archivetune.R
 import androidx.compose.runtime.getValue
-
-@Composable
-fun rememberArchiveTuneLottieComposition(
-    @RawRes rawRes: Int,
-): LottieComposition? {
-    val composition by rememberLottieComposition(
-        LottieCompositionSpec.RawRes(rawRes),
-    )
-    return composition
-}
 
 @Composable
 private fun archiveTuneTintColorProperties(tintColor: Color): LottieDynamicProperties =

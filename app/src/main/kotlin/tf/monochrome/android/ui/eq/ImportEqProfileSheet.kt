@@ -61,9 +61,6 @@ fun ImportEqProfileSheet(
     val validL = parsedL?.takeIf { !it.isEmpty && !it.looksLikeMeasurement }
     val validR = parsedR?.takeIf { !it.isEmpty && !it.looksLikeMeasurement }
 
-    // Unglassed: the sheet's default container resolves from the glass menu's
-    // color scheme (transparent surfaceContainerLow) — pin it to the real
-    // scheme so the sheet draws a standard opaque container.
     val unglassedScheme = LocalUnglassColorScheme.current ?: MaterialTheme.colorScheme
     ModalBottomSheet(
         onDismissRequest = onDismiss,

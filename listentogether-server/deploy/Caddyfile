@@ -1,0 +1,13 @@
+# ArchiveTune — Listen Together server Caddy reverse proxy.
+#
+# Adapted from BitChord's Listen Together backend deploy files (GPL-3.0):
+# https://github.com/kushagrasinghx/BitChord
+#
+# Caddy terminates TLS and passes WebSockets through untouched. The app then
+# connects to wss://listen.example.com (the WebSocket handler answers on any
+# path, so wss://listen.example.com/ws works too).
+
+listen.example.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8080
+}

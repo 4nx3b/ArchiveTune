@@ -45,14 +45,6 @@ fun rememberLiquidGlassEnabled(): Boolean {
 fun glassAwareSurface(): Color =
     if (rememberLiquidGlassEnabled()) Color.Transparent else MaterialTheme.colorScheme.surface
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun glassAwareLargeTopAppBarColors(): TopAppBarColors =
-    TopAppBarDefaults.largeTopAppBarColors(
-        containerColor = glassAwareSurface(),
-        scrolledContainerColor = Color.Transparent,
-    )
-
 @Composable
 fun glassAwareCardColor(): Color =
     when {

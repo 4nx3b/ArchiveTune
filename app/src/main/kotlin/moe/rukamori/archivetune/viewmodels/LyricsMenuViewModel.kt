@@ -314,22 +314,50 @@ class LyricsMenuViewModel
                             "AI translate start: song=${mediaMetadata.title} automatic=$isAutomatic " +
                                 "provider=${prefs[AiProviderKey]} model=${prefs[AiSelectedModelKey]}",
                         )
+                        val aiProvider = prefs[AiProviderKey].toEnum(AiProvider.NONE)
+                        var aiApiKey = prefs[AiApiKeyKey].orEmpty()
+                        var aiCustomEndpoint = prefs[AiCustomEndpointKey].orEmpty()
+                        var aiModel =
+                            if (aiProvider == AiProvider.CUSTOM) {
+                                prefs[AiCustomModelKey].orEmpty()
+                            } else {
+                                prefs[AiSelectedModelKey].orEmpty()
+                            }
+                        var aiDeepLFormality = "default"
+                        when (aiProvider) {
+                            AiProvider.DEEPL -> {
+                                aiApiKey = aiApiKey.ifBlank { prefs[moe.rukamori.archivetune.constants.DeeplApiKeyKey].orEmpty() }
+                                aiDeepLFormality = prefs[moe.rukamori.archivetune.constants.DeeplFormalityKey].orEmpty().ifBlank { "default" }
+                            }
+                            AiProvider.OPENROUTER -> {
+                                aiApiKey = aiApiKey.ifBlank { prefs[moe.rukamori.archivetune.constants.OpenRouterApiKeyKey].orEmpty() }
+                                aiCustomEndpoint = aiCustomEndpoint.ifBlank { prefs[moe.rukamori.archivetune.constants.OpenRouterBaseUrlKey].orEmpty() }
+                                aiModel = aiModel.ifBlank { prefs[moe.rukamori.archivetune.constants.OpenRouterModelKey].orEmpty() }
+                            }
+                            else -> {}
+                        }
+                        val effectiveTargetLanguage =
+                            prefs[moe.rukamori.archivetune.constants.TranslateLanguageKey]
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let { code ->
+                                    java.util.Locale.forLanguageTag(code)
+                                        .getDisplayLanguage(java.util.Locale.ENGLISH)
+                                        .uppercase()
+                                }
+                                ?.takeIf { it.isNotBlank() }
+                                ?: targetLanguage.ifBlank { "ENGLISH" }
                         val translatedLyrics =
                             AiLyricsTranslator().translate(
                                 config =
                                     AiServiceConfig(
-                                        provider = prefs[AiProviderKey].toEnum(AiProvider.NONE),
-                                        apiKey = prefs[AiApiKeyKey].orEmpty(),
-                                        customEndpoint = prefs[AiCustomEndpointKey].orEmpty(),
-                                        model =
-                                            if (prefs[AiProviderKey].toEnum(AiProvider.NONE) == AiProvider.CUSTOM) {
-                                                prefs[AiCustomModelKey].orEmpty()
-                                            } else {
-                                                prefs[AiSelectedModelKey].orEmpty()
-                                            },
+                                        provider = aiProvider,
+                                        apiKey = aiApiKey,
+                                        customEndpoint = aiCustomEndpoint,
+                                        model = aiModel,
+                                        deepLFormality = aiDeepLFormality,
                                     ),
                                 lyrics = lyrics,
-                                targetLanguage = targetLanguage.ifBlank { "ENGLISH" },
+                                targetLanguage = effectiveTargetLanguage,
                             )
                         val usableLyrics = usableTranslatedLyrics(translatedLyrics)
                         if (usableLyrics == null) {

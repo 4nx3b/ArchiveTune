@@ -554,6 +554,7 @@ object QobuzAudioProvider {
 
     fun clearTransientCaches() {
         failureCache.clear()
+        streamCache.clear()
         instanceCooldownUntilMs.clear()
     }
 
@@ -1016,6 +1017,7 @@ object QobuzAudioProvider {
             artists.joinToString(",") { it.normalized() },
             album.normalized(),
             durationMs?.div(1000L)?.toString().orEmpty(),
+            directTrackId.orEmpty(),
         ).joinToString("::")
 
     private fun String?.normalized(): String =

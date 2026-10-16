@@ -43,6 +43,10 @@ object DeezerAudioProvider {
 
     private const val GATEWAY = "https://www.deezer.com/ajax/gw-light.php"
     private const val MEDIA_ENDPOINT = "https://media.deezer.com/v1/get_url"
+
+    private const val DEFAULT_RESOLVER_URL = "https://yesitworkssomehow-funny-deeza-api-and-yeah.hf.space/get_url"
+    private const val DEFAULT_RESOLVER_URL_128 = "https://api-number-2-poopo.onrender.com/get_url"
+    private const val RENDER_RESOLVER_URL = "https://dzmedia-metrofuse.onrender.com/get_url"
     private const val USER_AGENT =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
             "Chrome/124.0.0.0 Safari/537.36"
@@ -195,7 +199,7 @@ object DeezerAudioProvider {
         listOf(mediaId, title.lowercase(), artists.joinToString(",").lowercase(), album.orEmpty().lowercase())
             .joinToString("|")
 
-    fun hasBackends(): Boolean = accounts().isNotEmpty()
+    fun hasBackends(): Boolean = accounts().isNotEmpty() || DeezerInstances.hasInstances()
 
     fun invalidate(
         query: Query,
@@ -211,9 +215,8 @@ object DeezerAudioProvider {
         format: String,
     ): Resolved? {
         val accounts = accounts()
-        if (accounts.isEmpty()) {
-            Timber.tag(TAG).d("resolve skipped: no manual or pooled accounts")
-            return null
+        if (accounts.isEmpty() && !DeezerInstances.hasInstances()) {
+            Timber.tag(TAG).d("no accounts and no API instances; only the anonymous resolver fallback is left")
         }
 
         val now = System.currentTimeMillis()
@@ -252,7 +255,7 @@ object DeezerAudioProvider {
             lastResolvedTrackId = trackId
             val stream =
                 buildResolvedStream(
-                    session = session,
+                    masterSecret = session.masterSecret,
                     media = media,
                     trackId = trackId,
                     matchedTitle = match.title,
@@ -264,8 +267,208 @@ object DeezerAudioProvider {
             return stream
         }
 
+        resolveViaInstance(query)?.let { stream ->
+            streamCache[cacheKey] = CachedStream(stream, System.currentTimeMillis() + STREAM_CACHE_MS)
+            return stream
+        }
+
+        runCatching { matchTrackWithoutSession(query) }
+            .onFailure { Timber.tag(TAG).w(it, "anonymous fallback match failed") }
+            .getOrNull()
+            ?.let { match ->
+                anonymousResolverStream(
+                    trackId = match.id,
+                    format = format,
+                    matchedTitle = match.title,
+                    matchedArtist = match.artists.firstOrNull(),
+                    matchedAlbum = match.album,
+                    matchedDurationMs = match.durationMs,
+                )
+            }?.let { cached ->
+                streamCache[cacheKey] = cached
+                return cached.stream
+            }
+
         failureCache[cacheKey] = System.currentTimeMillis() + FAILURE_CACHE_MS
         return null
+    }
+
+    private fun resolveViaInstance(query: Query): Resolved? {
+        if (!DeezerInstances.hasInstances()) return null
+
+        if (DeezerInstances.instances().isEmpty()) return null
+        val match: TrackMatching.Candidate?
+        val isrc: String?
+        val byIsrc =
+            query.isrc?.takeIf { it.isNotBlank() }?.let { code ->
+                runCatching { lookupByIsrc(code) }.getOrNull()
+            }
+        if (byIsrc != null) {
+            match = byIsrc
+            isrc = query.isrc
+        } else {
+            val metadata =
+                runCatching { kotlinx.coroutines.runBlocking { lookup(query) } }
+                    .onFailure { Timber.tag(TAG).w(it, "public lookup failed") }
+                    .getOrNull() ?: return null
+            match =
+                TrackMatching.Candidate(
+                    id = metadata.trackId,
+                    title = metadata.title,
+                    artists = listOfNotNull(metadata.artist),
+                    album = metadata.album,
+                    durationMs = metadata.durationMs,
+                )
+            isrc = metadata.isrc
+        }
+        val stream = DeezerInstances.resolve(isrc = isrc, trackId = match.id) ?: return null
+        lastResolvedTrackId = match.id
+        return Resolved(
+
+            uri = stream.url,
+            mimeType = if (stream.flac) MIME_FLAC else MIME_MPEG,
+            codecs = if (stream.flac) "flac" else "mp3",
+            contentLength = stream.contentLength,
+            label = if (stream.flac) "Deezer FLAC (API)" else "Deezer MP3 (API)",
+            matchedTitle = match.title,
+            matchedArtist = match.artists.firstOrNull(),
+            matchedAlbum = match.album,
+            matchedDurationMs = match.durationMs,
+            sampleRate = if (stream.flac) 44_100 else null,
+            bitDepth = if (stream.flac) 16 else null,
+        )
+    }
+
+    private fun matchTrackWithoutSession(query: Query): TrackMatching.Candidate? {
+        val key = query.cacheKey()
+        val now = System.currentTimeMillis()
+        searchCache[key]?.let { (candidate, expiresAt) ->
+            if (expiresAt > now && candidate != null) return candidate
+            if (expiresAt <= now) searchCache.remove(key)
+        }
+
+        query.isrc?.takeIf { it.isNotBlank() }?.let { isrc ->
+            val exact =
+                runCatching { lookupByIsrc(isrc) }
+                    .onFailure { Timber.tag(TAG).w(it, "isrc lookup failed for %s", isrc) }
+                    .getOrNull()
+            if (exact != null) {
+                searchCache[key] = exact to (now + SEARCH_CACHE_MS)
+                return exact
+            }
+        }
+
+        val metadata =
+            runCatching { kotlinx.coroutines.runBlocking { lookup(query) } }
+                .onFailure { Timber.tag(TAG).w(it, "public lookup failed") }
+                .getOrNull() ?: return null
+        val candidate =
+            TrackMatching.Candidate(
+                id = metadata.trackId,
+                title = metadata.title,
+                artists = listOfNotNull(metadata.artist),
+                album = metadata.album,
+                durationMs = metadata.durationMs,
+            )
+        searchCache[key] = candidate to (now + SEARCH_CACHE_MS)
+        return candidate
+    }
+
+    private fun anonymousResolverStream(
+        trackId: String,
+        format: String,
+        matchedTitle: String,
+        matchedArtist: String?,
+        matchedAlbum: String?,
+        matchedDurationMs: Long?,
+    ): CachedStream? {
+        for (resolverUrl in anonymousResolverUrls(format)) {
+            val media =
+                runCatching { requestAnonymousUrl(resolverUrl, trackId, format) }
+                    .onFailure { Timber.tag(TAG).w(it, "anonymous resolver failed: %s", resolverUrl) }
+                    .getOrNull() ?: continue
+            Timber.tag(TAG).d("track %s resolved by anonymous resolver %s (%s)", trackId, resolverUrl, media.format)
+            lastResolvedTrackId = trackId
+
+            val stream =
+                buildResolvedStream(
+                    masterSecret = null,
+                    media = media,
+                    trackId = trackId,
+                    matchedTitle = matchedTitle,
+                    matchedArtist = matchedArtist,
+                    matchedAlbum = matchedAlbum,
+                    matchedDurationMs = matchedDurationMs,
+                )
+
+            val expiresAt =
+                minOf(media.expiresAtMs ?: Long.MAX_VALUE, System.currentTimeMillis() + STREAM_CACHE_MS)
+            return CachedStream(stream, expiresAt)
+        }
+        return null
+    }
+
+    private fun anonymousResolverUrls(format: String): List<String> =
+        buildList {
+            if (format == FORMAT_MP3_128) add(DEFAULT_RESOLVER_URL_128)
+            add(DEFAULT_RESOLVER_URL)
+            add(RENDER_RESOLVER_URL)
+        }.distinct()
+
+    private fun requestAnonymousUrl(
+        resolverUrl: String,
+        trackId: String,
+        format: String,
+    ): Media? {
+        val body =
+            JSONObject()
+                .put("formats", JSONArray().put(format))
+                .put("ids", JSONArray().put(trackId.toLongOrNull() ?: trackId))
+                .put("fast", false)
+        val request =
+            Request
+                .Builder()
+                .url(resolverUrl)
+                .header("Accept", "application/json")
+                .header("User-Agent", USER_AGENT)
+                .post(body.toString().toRequestBody(JSON_MEDIA))
+                .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw java.io.IOException("resolver HTTP ${response.code}")
+            val root = JSONObject(response.body?.string().orEmpty())
+
+            val mediaArray = root.optJSONArray("data")?.optJSONObject(0)?.optJSONArray("media") ?: return null
+
+            val media =
+                (0 until mediaArray.length())
+                    .mapNotNull { i -> mediaArray.optJSONObject(i) }
+                    .firstOrNull { it.optString("format").equals(format, ignoreCase = true) }
+                    ?: mediaArray.optJSONObject(0)
+                    ?: return null
+
+            val sources = media.optJSONArray("sources")
+            val source = sources?.optJSONObject(1) ?: sources?.optJSONObject(0) ?: return null
+            val url = source.optString("url").takeIf { it.isNotBlank() } ?: return null
+
+            val cipherType = media.optJSONObject("cipher")?.optString("type").orEmpty()
+            if (!cipherType.equals("BF_CBC_STRIPE", ignoreCase = true)) return null
+
+            val servedFormat = media.optString("format").ifBlank { format }
+
+            val expiresAtMs =
+                media.optLong("exp", 0L).takeIf { it > 0L }
+                    ?.times(1000L)
+                    ?.minus(30_000L)
+                    ?.coerceAtLeast(System.currentTimeMillis() + 60_000L)
+            return Media(
+                url = url,
+                flac = servedFormat.equals(FORMAT_FLAC, ignoreCase = true),
+                format = servedFormat,
+                contentLength = media.optLong("filesize", 0L).takeIf { it > 0L },
+                expiresAtMs = expiresAtMs,
+            )
+        }
     }
 
     suspend fun resolveByTrackId(
@@ -274,7 +477,9 @@ object DeezerAudioProvider {
     ): Resolved? {
         if (trackId.isBlank()) return null
         val accounts = accounts()
-        if (accounts.isEmpty()) return null
+        if (accounts.isEmpty()) {
+            Timber.tag(TAG).d("no accounts; only the anonymous resolver fallback is left for track %s", trackId)
+        }
 
         val now = System.currentTimeMillis()
         val cacheKey = "id:$trackId:$format"
@@ -305,7 +510,7 @@ object DeezerAudioProvider {
                 lastResolvedTrackId = trackId
                 val stream =
                     buildResolvedStream(
-                        session = session,
+                        masterSecret = session.masterSecret,
                         media = media,
                         trackId = trackId,
                         matchedTitle = "",
@@ -316,13 +521,25 @@ object DeezerAudioProvider {
                 streamCache[cacheKey] = CachedStream(stream, System.currentTimeMillis() + STREAM_CACHE_MS)
                 return@withContext stream
             }
+
+            anonymousResolverStream(
+                trackId = trackId,
+                format = format,
+                matchedTitle = "",
+                matchedArtist = null,
+                matchedAlbum = null,
+                matchedDurationMs = null,
+            )?.let { cached ->
+                streamCache[cacheKey] = cached
+                return@withContext cached.stream
+            }
             failureCache[cacheKey] = System.currentTimeMillis() + FAILURE_CACHE_MS
             null
         }
     }
 
     private fun buildResolvedStream(
-        session: Session,
+        masterSecret: String?,
         media: Media,
         trackId: String,
         matchedTitle: String,
@@ -331,7 +548,7 @@ object DeezerAudioProvider {
         matchedDurationMs: Long?,
     ): Resolved =
         Resolved(
-            uri = DeezerCrypto.buildUri(media.url, trackId, session.masterSecret),
+            uri = DeezerCrypto.buildUri(media.url, trackId, masterSecret),
             mimeType = if (media.flac) MIME_FLAC else MIME_MPEG,
 
             codecs = if (media.flac) "flac" else "mp3",
@@ -518,6 +735,8 @@ object DeezerAudioProvider {
 
         val format: String,
         val contentLength: Long?,
+
+        val expiresAtMs: Long? = null,
     )
 
     private fun requestUrl(
@@ -773,7 +992,6 @@ object DeezerAudioProvider {
     }
 
     private fun normalizedSimilarity(a: String, b: String): Double {
-
         val normalize: (String) -> String = { s ->
             s.lowercase().trim().replace(Regex("[^\\p{L}\\p{N} ]"), "")
         }

@@ -298,7 +298,6 @@ class NativeAudioEngine @Inject constructor(
                 try {
                     block(handle)
                 } catch (error: LinkageError) {
-
                     nativeHandle = 0L
                     Log.e(TAG, "Native audio call failed; falling back to Android audio", error)
                     fallback

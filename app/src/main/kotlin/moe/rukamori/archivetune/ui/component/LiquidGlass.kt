@@ -40,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.withTransform
@@ -72,6 +73,7 @@ import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.colorControls
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.shadow.Shadow
 import moe.rukamori.archivetune.constants.LIQUID_GLASS_ADAPTIVE_LUMINANCE_DEFAULT
 import moe.rukamori.archivetune.constants.LIQUID_GLASS_BACKDROP_VIBRANCY_DEFAULT
 import moe.rukamori.archivetune.constants.LIQUID_GLASS_BLUR_RADIUS_DEFAULT
@@ -241,7 +243,7 @@ fun rememberLiquidGlassTuning(): LiquidGlassTuning {
     }
 }
 
-internal const val ThrottledLayerBackdropDefaultIntervalMillis = 100L
+internal const val ThrottledLayerBackdropDefaultIntervalMillis = 32L
 
 private val liveRecorderBackdrops =
     java.util.Collections.synchronizedMap(
@@ -261,6 +263,12 @@ class ThrottledLayerBackdrop internal constructor(
     internal var consumerInvalidationTick by mutableStateOf(0)
 
     internal var recordingInProgress by mutableStateOf(false)
+
+    internal var recordTick by mutableStateOf(0)
+
+    fun requestRecord() {
+        recordTick++
+    }
 
     internal fun notifyRecorderAttached() {
         consumerInvalidationTick++
@@ -286,7 +294,6 @@ class ThrottledLayerBackdrop internal constructor(
         coordinates: LayoutCoordinates?,
         layerBlock: (GraphicsLayerScope.() -> Unit)?,
     ) {
-
         @Suppress("UNUSED_VARIABLE") val tick = consumerInvalidationTick
         if (recordingInProgress) return
         val coordinates = coordinates ?: return
@@ -297,7 +304,6 @@ class ThrottledLayerBackdrop internal constructor(
             try {
                 layerCoordinates.localPositionOf(coordinates)
             } catch (_: Exception) {
-
                 runCatching {
                     coordinates.positionInWindow() - layerCoordinates.positionInWindow()
                 }.getOrNull()
@@ -362,6 +368,8 @@ private class ThrottledLayerBackdropNode(
     }
 
     override fun ContentDrawScope.draw() {
+
+        @Suppress("UNUSED_VARIABLE") val tick = backdrop.recordTick
         val now = SystemClock.uptimeMillis()
         if (now - lastRecordUptimeMillis >= backdrop.minIntervalMillis) {
             lastRecordUptimeMillis = now
@@ -430,6 +438,9 @@ fun Modifier.liquidGlass(
     val tuning = LocalLiquidGlassTuning.current
 
     return remember(backdrop, shape, interactive, baseColor, blurRadius, isDark, scrim, tuning) {
+
+        val lensScale = if (isDark) 1f else 0.5f
+        val lensAmountScale = if (isDark) 1f else 0.6f
         this.drawBackdrop(
             backdrop = backdrop,
             effects = {
@@ -445,25 +456,41 @@ fun Modifier.liquidGlass(
                 )
 
                 lens(
-                    refractionHeight = (28f * tuning.refractionHeightFactor).dp.toPx(),
-                    refractionAmount = size.minDimension * (tuning.refractionAmountFactor / 3.2f),
-                    depthEffect = tuning.depth3D,
-                    chromaticAberration = tuning.chromaticAberration,
+                    refractionHeight = minOf(
+                        (28f * lensScale * tuning.refractionHeightFactor).dp.toPx(),
+                        size.minDimension / 2f,
+                    ),
+                    refractionAmount = size.minDimension * (tuning.refractionAmountFactor / 3.2f) * lensAmountScale,
+                    depthEffect = tuning.depth3D && isDark,
+                    chromaticAberration = tuning.chromaticAberration && isDark,
                 )
             },
+
+            shadow = { if (isDark) Shadow.Default else null },
             onDrawBackdrop = { drawBackdrop ->
                 drawBackdrop()
             },
             shape = { shape },
             onDrawBehind =
                 if (baseColor != Color.Unspecified) {
-                    { drawRect(baseColor) }
+
+                    {
+                        drawOutline(
+                            outline = shape.createOutline(size, layoutDirection, this),
+                            color = baseColor,
+                        )
+                    }
                 } else {
                     null
                 },
             onDrawSurface = {
+
+                val surfaceOutline = shape.createOutline(size, layoutDirection, this)
                 if (scrim != null) {
-                    drawRect(scrim.copy(alpha = (scrim.alpha * tuning.tintFactor).coerceIn(0f, 1f)))
+                    drawOutline(
+                        outline = surfaceOutline,
+                        color = scrim.copy(alpha = (scrim.alpha * tuning.tintFactor).coerceIn(0f, 1f)),
+                    )
                 } else {
                     val darken =
                         if (tuning.adaptiveLuminance) {
@@ -476,9 +503,11 @@ fun Modifier.liquidGlass(
                         } else {
                             0.12f
                         }
-                    drawRect(
-                        (if (isDark) Color.Black else Color.White)
-                            .copy(alpha = (darken * tuning.tintFactor).coerceIn(0f, 1f)),
+                    drawOutline(
+                        outline = surfaceOutline,
+                        color =
+                            (if (isDark) Color.Black else Color.White)
+                                .copy(alpha = (darken * tuning.tintFactor).coerceIn(0f, 1f)),
                     )
                 }
             },
@@ -494,11 +523,20 @@ fun LiquidGlassContainer(
     interactive: Boolean = false,
     blurRadius: Dp = LiquidGlassPillBlurRadius,
     scrim: Color? = null,
+    baseColor: Color = Color.Unspecified,
     contentAlignment: Alignment = Alignment.Center,
     content: @Composable BoxScope.() -> Unit,
 ) {
     Box(
-        modifier = modifier.liquidGlass(backdrop, shape, interactive, blurRadius = blurRadius, scrim = scrim),
+        modifier =
+            modifier.liquidGlass(
+                backdrop,
+                shape,
+                interactive,
+                baseColor = baseColor,
+                blurRadius = blurRadius,
+                scrim = scrim,
+            ),
         contentAlignment = contentAlignment,
         content = content,
     )
@@ -513,7 +551,6 @@ fun LiquidGlassActionPill(
     scrim: Color? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
-
     val sheetOverlayFraction = LocalPlayerSheetOverlayFraction.current
     Row(
         modifier =
@@ -566,11 +603,14 @@ fun LiquidGlassIconButton(
     onClick: () -> Unit,
 ) {
     val resolvedTint = if (tint == Color.Unspecified) liquidGlassContentColor() else tint
+
+    val glassBase = MaterialTheme.colorScheme.surfaceContainerHigh
     LiquidGlassContainer(
         backdrop = backdrop,
         modifier = modifier,
         shape = shape,
         interactive = interactive,
+        baseColor = glassBase,
     ) {
         Material3IconButton(
             onClick = onClick,
@@ -598,11 +638,14 @@ fun LiquidGlassIconButton(
     onClick: () -> Unit,
 ) {
     val resolvedTint = if (tint == Color.Unspecified) liquidGlassContentColor() else tint
+
+    val glassBase = MaterialTheme.colorScheme.surfaceContainerHigh
     LiquidGlassContainer(
         backdrop = backdrop,
         modifier = modifier,
         shape = shape,
         interactive = interactive,
+        baseColor = glassBase,
     ) {
         Material3IconButton(
             onClick = onClick,

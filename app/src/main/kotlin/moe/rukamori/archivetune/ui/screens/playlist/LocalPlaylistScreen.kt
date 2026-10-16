@@ -286,7 +286,7 @@ fun LocalPlaylistScreen(
         BackHandler {
             selection = false
         }
-    } else {
+    } else if (navController.previousBackStackEntry == null) {
         BackHandler {
             try {
                 if (!navController.popBackStack()) {
@@ -295,12 +295,6 @@ fun LocalPlaylistScreen(
                     }
                 }
             } catch (_: Exception) {
-                try {
-                    if (!navController.navigateUp()) {
-                        navController.navigate("library") { launchSingleTop = true }
-                    }
-                } catch (_: Exception) {
-                }
             }
         }
     }

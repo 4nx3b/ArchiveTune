@@ -65,8 +65,9 @@ import moe.rukamori.archivetune.constants.GridThumbnailHeight
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LibraryAlbumGridItem
 import moe.rukamori.archivetune.ui.component.LocalMenuState
+import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.screens.GlassScreenHeaderOverlay
-import moe.rukamori.archivetune.ui.screens.glassHeaderSource
+import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.ui.screens.rememberGlassScreenHeader
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.viewmodels.ArtistAlbumsViewModel
@@ -129,46 +130,59 @@ fun ArtistAlbumsScreen(
     Box(
         modifier = Modifier.fillMaxSize(),
     ) {
-        LazyVerticalGrid(
-            state = lazyGridState,
-            columns = GridCells.Adaptive(minSize = GridThumbnailHeight + 24.dp),
-            contentPadding = gridContentPadding,
-            modifier = Modifier.glassHeaderSource(glassHeader),
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .let { m -> if (glassHeader.backdrop != null) m.glassSource(glassHeader.backdrop) else m }
+                    .hazeSource(glassHeader.haze),
         ) {
-            item(
-                key = "header",
-                span = { GridItemSpan(maxLineSpan) },
-                contentType = CONTENT_TYPE_HEADER,
+            ArtistPageAmbientBackdrop(
+                artistId = viewModel.routeArtistId,
+                artworkUrl = artist?.artist?.thumbnailUrl,
+                listScrolling = lazyGridState.isScrollInProgress,
+            )
+
+            LazyVerticalGrid(
+                state = lazyGridState,
+                columns = GridCells.Adaptive(minSize = GridThumbnailHeight + 24.dp),
+                contentPadding = gridContentPadding,
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 16.dp),
+                item(
+                    key = "header",
+                    span = { GridItemSpan(maxLineSpan) },
+                    contentType = CONTENT_TYPE_HEADER,
                 ) {
-                    Spacer(Modifier.weight(1f))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    ) {
+                        Spacer(Modifier.weight(1f))
 
-                    Text(
-                        text = pluralStringResource(R.plurals.n_album, albums.size, albums.size),
-                        style = MaterialTheme.typography.titleSmall,
+                        Text(
+                            text = pluralStringResource(R.plurals.n_album, albums.size, albums.size),
+                            style = MaterialTheme.typography.titleSmall,
 
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
+                items(
+                    items = albums.distinctBy { it.id },
+                    key = { it.id },
+                    contentType = { CONTENT_TYPE_ALBUM },
+                ) { album ->
+                    LibraryAlbumGridItem(
+                        navController = navController,
+                        menuState = menuState,
+                        coroutineScope = coroutineScope,
+                        album = album,
+                        isActive = album.id == mediaMetadata?.album?.id,
+                        isPlaying = isPlaying,
+                        modifier = Modifier.animateItem(),
                     )
                 }
-            }
-
-            items(
-                items = albums.distinctBy { it.id },
-                key = { it.id },
-                contentType = { CONTENT_TYPE_ALBUM },
-            ) { album ->
-                LibraryAlbumGridItem(
-                    navController = navController,
-                    menuState = menuState,
-                    coroutineScope = coroutineScope,
-                    album = album,
-                    isActive = album.id == mediaMetadata?.album?.id,
-                    isPlaying = isPlaying,
-                    modifier = Modifier.animateItem(),
-                )
             }
         }
 

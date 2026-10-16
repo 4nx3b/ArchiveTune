@@ -131,6 +131,13 @@ fun OnlineSearchResult(
         )
         return
     }
+    if (viewModel.searchProvider == SearchProvider.SOUNDCLOUD) {
+        SoundCloudOnlineSearchResult(
+            navController = navController,
+            query = viewModel.query,
+        )
+        return
+    }
 
     val coroutineScope = rememberCoroutineScope()
     val lazyListState = rememberLazyListState()
@@ -356,7 +363,7 @@ fun OnlineSearchResult(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
+                .background(MaterialTheme.colorScheme.surface),
     ) {
         LazyColumn(
             state = lazyListState,
@@ -520,7 +527,6 @@ fun OnlineSearchResult(
             onBackLongClick = { navController.backToMain() },
             placeholder = stringResource(R.string.search_yt_music),
             bottomPadding = playerAwareBottomPadding,
-            lazyListState = lazyListState,
             trailing = {
                 SearchSourcePicker(
                     currentScope = SearchSource.ONLINE,

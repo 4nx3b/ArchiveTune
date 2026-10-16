@@ -44,6 +44,7 @@ import moe.rukamori.archivetune.constants.ThumbnailCornerRadius
 import moe.rukamori.archivetune.spotify.Spotify
 import moe.rukamori.archivetune.spotify.SpotifyPlaybackResolver
 import moe.rukamori.archivetune.spotify.SpotifyPlaylistQueue
+import moe.rukamori.archivetune.spotify.SpotifyMapper
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
 import moe.rukamori.archivetune.ui.component.AppleMusicStyleAccentColor
 import moe.rukamori.archivetune.ui.component.ItemThumbnail
@@ -69,7 +70,7 @@ fun SpotifyPlaylistMenu(
     val playlistId = playlist.id
     val playlistName = playlist.name
     val songCount = playlist.tracks?.total ?: 0
-    val coverUrl = playlist.images.firstOrNull()?.url
+    val coverUrl = SpotifyMapper.getPlaylistThumbnail(playlist)
     val accentColor = AppleMusicStyleAccentColor
 
     val shareIntent = remember(playlistId) {

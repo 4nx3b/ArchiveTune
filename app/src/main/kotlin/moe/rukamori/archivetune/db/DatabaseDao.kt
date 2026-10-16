@@ -48,6 +48,8 @@ import moe.rukamori.archivetune.db.entities.PlayCountEntity
 import moe.rukamori.archivetune.db.entities.PlaylistSong
 import moe.rukamori.archivetune.db.entities.PlaylistSongMap
 import moe.rukamori.archivetune.db.entities.PlaylistTagMap
+import moe.rukamori.archivetune.db.entities.RecFeedbackEntity
+import moe.rukamori.archivetune.db.entities.RecPlaybackSignalEntity
 import moe.rukamori.archivetune.db.entities.RelatedSongMap
 import moe.rukamori.archivetune.db.entities.SearchHistory
 import moe.rukamori.archivetune.db.entities.SetVideoIdEntity
@@ -1923,10 +1925,9 @@ interface DatabaseDao {
                 name = playlistItem.title,
                 browseId = playlistItem.id,
                 thumbnailUrl =
-                    if (playlistEntity.hasLocalCustomCover) {
-                        playlistEntity.thumbnailUrl
-                    } else {
-                        playlistItem.thumbnail
+                    when {
+                        playlistEntity.hasCustomCover -> playlistEntity.thumbnailUrl
+                        else -> playlistItem.thumbnail ?: playlistEntity.thumbnailUrl
                     },
                 isEditable = playlistItem.isEditable,
                 remoteSongCount = playlistItem.songCountText?.let { Regex("""\d+""").find(it)?.value?.toIntOrNull() },
@@ -2239,4 +2240,70 @@ interface DatabaseDao {
             addTagToPlaylist(playlistId, tagId)
         }
     }
+
+    @Insert
+    suspend fun insertRecPlaybackSignal(signal: RecPlaybackSignalEntity)
+
+    @Query("DELETE FROM rec_playback_signal WHERE startedAtMs < :beforeMs")
+    suspend fun trimRecPlaybackSignals(beforeMs: Long)
+
+    @Query("DELETE FROM rec_playback_signal")
+    suspend fun clearRecPlaybackSignals()
+
+    @Query("SELECT * FROM rec_playback_signal WHERE startedAtMs >= :fromMs ORDER BY startedAtMs DESC")
+    suspend fun recPlaybackSignalsSince(fromMs: Long): List<RecPlaybackSignalEntity>
+
+    @Insert
+    suspend fun insertRecFeedback(feedback: RecFeedbackEntity)
+
+    @Query("DELETE FROM rec_feedback WHERE targetSongId = :songId AND kind = :kind")
+    suspend fun removeRecFeedbackForSong(
+        songId: String,
+        kind: String,
+    )
+
+    @Query("DELETE FROM rec_feedback WHERE targetArtistId = :artistId AND kind = :kind")
+    suspend fun removeRecFeedbackForArtist(
+        artistId: String,
+        kind: String,
+    )
+
+    @Query("DELETE FROM rec_feedback")
+    suspend fun clearRecFeedback()
+
+    @Query("SELECT * FROM rec_feedback ORDER BY createdAtMs DESC")
+    suspend fun allRecFeedback(): List<RecFeedbackEntity>
+
+    @Query(
+        """
+        SELECT songId,
+               COUNT(1) AS playCount,
+               SUM(playTime) AS totalListenedMs,
+               MAX(timestamp) AS lastPlayedAtMs
+        FROM event
+        GROUP BY songId
+        """,
+    )
+    suspend fun recEventAggregates(): List<RecEventAggregate>
+
+    @Query(
+        """
+        SELECT songId, COUNT(1) AS playlistAddCount
+        FROM playlist_song_map
+        GROUP BY songId
+        """,
+    )
+    suspend fun recPlaylistAddCounts(): List<RecPlaylistAddAggregate>
 }
+
+data class RecEventAggregate(
+    val songId: String,
+    val playCount: Int,
+    val totalListenedMs: Long,
+    val lastPlayedAtMs: Long,
+)
+
+data class RecPlaylistAddAggregate(
+    val songId: String,
+    val playlistAddCount: Int,
+)

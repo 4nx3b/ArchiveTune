@@ -30,16 +30,6 @@ object GatewayDefaults {
     const val HELLO_TIMEOUT_MS = 20_000L
 }
 
-object ActivityTypes {
-    private val keys = listOf("PLAYING", "STREAMING", "LISTENING", "WATCHING", "CUSTOM", "COMPETING", "HANG")
-    private val forward = keys.filter { it.isNotEmpty() }.mapIndexed { i, k -> k to i }.toMap()
-    private val reverse = forward.entries.associate { (k, v) -> v to k }
-
-    fun fromString(name: String): Int? = forward[name]
-
-    fun fromInt(value: Int): String? = reverse[value]
-}
-
 object IntentsFlags {
     val FLAGS: Map<String, Int> =
         mapOf(

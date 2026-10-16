@@ -140,9 +140,9 @@ class AiLyricsTranslator {
             .replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
 
     private companion object {
-        const val MaxItemsPerBatch = 160
-        const val MaxCharsPerBatch = 16000
-        const val MaxConcurrentBatches = 3
+        const val MaxItemsPerBatch = 80
+        const val MaxCharsPerBatch = 8000
+        const val MaxConcurrentBatches = 8
         const val MaxCachedTranslations = 32
 
         val resultCache =

@@ -174,7 +174,6 @@ class DspEngineManager @Inject constructor(
     }
 
     private fun sanitizeParam(value: Float): Float {
-
         return if (value.isFinite()) value else 0f
     }
 

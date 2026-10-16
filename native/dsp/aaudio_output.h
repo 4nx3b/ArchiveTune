@@ -3,16 +3,21 @@
  * © Rukamori — github.com/rukamori
  * GPL-3.0 License | Contributors: see git history
  *
- * RAII wrapper over an AAudio output stream in EXCLUSIVE sharing mode with
- * 32-bit float PCM — the USB-direct path (no AudioFlinger mixer between the
- * app and the USB DAC).
+ * Oboe-backed exclusive float output stream — the USB-direct path (no
+ * AudioFlinger mixer between the app and the USB DAC). Built on Google Oboe
+ * (https://github.com/google/oboe) so stream lifecycle, disconnect detection
+ * and blocking writes follow the library's battle-tested semantics instead
+ * of hand-rolled AAudio C calls.
  */
 
 #ifndef ARCHIVETUNE_NATIVE_DSP_AAUDIO_OUTPUT_H_
 #define ARCHIVETUNE_NATIVE_DSP_AAUDIO_OUTPUT_H_
 
-#include <aaudio/AAudio.h>
+#include <oboe/Oboe.h>
+
+#include <atomic>
 #include <cstdint>
+#include <memory>
 #include <mutex>
 
 namespace archivetune::dsp {
@@ -32,7 +37,9 @@ public:
     };
 
     /**
-     * Opens an output stream. Returns an AAudio result code (AAUDIO_OK == 0).
+     * Opens an output stream. Returns 0 on success, otherwise a negative
+     * oboe::Result value (these mirror the AAudio error codes the Kotlin
+     * layer already handles).
      *
      * @param deviceId 0 routes to the default device; a positive AudioManager
      *        AudioDeviceInfo id pins the stream to that device (a USB DAC).
@@ -49,7 +56,7 @@ public:
 
     /**
      * Blocking write of interleaved float PCM already scaled by volume.
-     * Returns frames written, or a negative AAudio error.
+     * Returns frames written, or a negative oboe::Result error.
      *
      * @param channels the interleaved layout of @p data. The pointer stride
      *        between consecutive frames comes from THIS argument, not the
@@ -80,13 +87,34 @@ public:
     bool isOpen() const;
 
 private:
+    void closeLocked();
+
+    class DisconnectCallback : public oboe::AudioStreamErrorCallback {
+    public:
+        explicit DisconnectCallback(std::atomic<bool>& disconnected)
+            : disconnected_(disconnected) {}
+
+        void onErrorBeforeClose(oboe::AudioStream* /* stream */,
+                                oboe::Result /* error */) override {
+            disconnected_.store(true, std::memory_order_release);
+        }
+
+        void onErrorAfterClose(oboe::AudioStream* /* stream */,
+                               oboe::Result /* error */) override {}
+
+    private:
+        std::atomic<bool>& disconnected_;
+    };
+
     mutable std::mutex mutex_;
-    AAudioStream* stream_ = nullptr;
+    std::shared_ptr<oboe::AudioStream> stream_;
+    std::shared_ptr<DisconnectCallback> errorCallback_;
     bool exclusiveGranted_ = false;
     bool open_ = false;
     int32_t sampleRate_ = 0;
     int32_t channels_ = 0;
     int64_t framesWritten_ = 0;
+    std::atomic<bool> disconnected_{false};
 };
 
 }  // namespace archivetune::dsp

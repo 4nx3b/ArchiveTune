@@ -41,6 +41,11 @@ class BitPerfectSwitchingAudioSink(
         outputChannels: IntArray?,
     ) {
         val target = liveSink()
+        val previous = configuredSink
+        if (previous !== target) {
+            previous?.let { stale -> runCatching { stale.flush() } }
+            runCatching { target.flush() }
+        }
         target.configure(inputFormat, specifiedBufferSize, outputChannels)
 
         configuredSink = target

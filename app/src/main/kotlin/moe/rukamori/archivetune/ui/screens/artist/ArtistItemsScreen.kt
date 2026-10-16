@@ -8,6 +8,7 @@
 package moe.rukamori.archivetune.ui.screens.artist
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -32,11 +33,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -82,8 +86,9 @@ import moe.rukamori.archivetune.ui.component.YouTubeListItem
 import moe.rukamori.archivetune.ui.component.shimmer.GridItemPlaceHolder
 import moe.rukamori.archivetune.ui.component.shimmer.ListItemPlaceHolder
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
+import moe.rukamori.archivetune.ui.component.glassSource
 import moe.rukamori.archivetune.ui.screens.GlassScreenHeaderOverlay
-import moe.rukamori.archivetune.ui.screens.glassHeaderSource
+import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.ui.screens.rememberGlassScreenHeader
 import moe.rukamori.archivetune.ui.menu.YouTubeAlbumMenu
 import moe.rukamori.archivetune.ui.menu.YouTubeArtistMenu
@@ -92,6 +97,7 @@ import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.viewmodels.ArtistItemsViewModel
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.Color
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -148,215 +154,70 @@ fun ArtistItemsScreen(
         }
     }
 
+    val artist by viewModel.artist.collectAsStateWithLifecycle()
+
+    val listScrolling by remember {
+        derivedStateOf { lazyListState.isScrollInProgress || lazyGridState.isScrollInProgress }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
-        if (itemsPage == null) {
-            ShimmerHost(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .glassHeaderSource(glassHeader)
-                        .windowInsetsPadding(LocalPlayerAwareWindowInsets.current),
-            ) {
-                repeat(8) {
-                    ListItemPlaceHolder()
-                }
-            }
-        } else if (itemsLayout == ArtistItemsPageLayout.LIST && itemsPage?.items?.firstOrNull() is SongItem) {
-        LazyColumn(
-            state = lazyListState,
-            contentPadding = contentPadding,
-            modifier = Modifier.fillMaxSize().glassHeaderSource(glassHeader),
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .let { m -> if (glassHeader.backdrop != null) m.glassSource(glassHeader.backdrop) else m }
+                    .hazeSource(glassHeader.haze),
         ) {
-            items(
-                items = itemsPage?.items.orEmpty().distinctBy { it.id },
-                key = { "artist_items_${it.contentKey}" },
-                contentType = { it.contentType },
-            ) { item ->
-                YouTubeListItem(
-                    item = item,
-                    isActive =
-                        when (item) {
-                            is SongItem -> mediaMetadata?.id == item.id
-                            is AlbumItem -> mediaMetadata?.album?.id == item.id
-                            else -> false
-                        },
-                    isPlaying = isPlaying,
-                    activeContainerBackdrop = true,
-                    trailingContent = {
-                        IconButton(
-                            onClick = {
-                                menuState.show {
-                                    when (item) {
-                                        is SongItem -> {
-                                            YouTubeSongMenu(
-                                                song = item,
-                                                navController = navController,
-                                                onDismiss = menuState::dismiss,
-                                            )
-                                        }
-
-                                        is AlbumItem -> {
-                                            YouTubeAlbumMenu(
-                                                albumItem = item,
-                                                navController = navController,
-                                                onDismiss = menuState::dismiss,
-                                            )
-                                        }
-
-                                        is ArtistItem -> {
-                                            YouTubeArtistMenu(
-                                                artist = item,
-                                                onDismiss = menuState::dismiss,
-                                            )
-                                        }
-
-                                        is PlaylistItem -> {
-                                            YouTubePlaylistMenu(
-                                                playlist = item,
-                                                coroutineScope = coroutineScope,
-                                                onDismiss = menuState::dismiss,
-                                            )
-                                        }
-
-                                        is PodcastItem, is EpisodeItem -> Unit
-                                    }
-                                }
-                            },
-                            onLongClick = {},
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.more_vert),
-                                contentDescription = null,
-                            )
-                        }
-                    },
+            if (!viewModel.songsSection) {
+                ArtistPageAmbientBackdrop(
+                    artistId = viewModel.routeArtistId,
+                    artworkUrl = artist?.thumbnailUrl,
+                    listScrolling = listScrolling,
+                )
+            } else {
+                Box(
                     modifier =
                         Modifier
-                            .clickable {
-                                when (item) {
-                                    is SongItem -> {
-                                        if (item.id == mediaMetadata?.id) {
-                                            playerConnection.player.togglePlayPause()
-                                        } else {
-                                            val songs =
-                                                itemsPage
-                                                    ?.items
-                                                    .orEmpty()
-                                                    .filterIsInstance<SongItem>()
-                                            playerConnection.playQueue(
-                                                ListQueue(
-                                                    title = title,
-                                                    items = songs.map { it.toMediaItem() },
-                                                    startIndex = songs.indexOfFirst { it.id == item.id }.coerceAtLeast(0),
-                                                ),
-                                            )
-                                        }
-                                    }
-
-                                    is AlbumItem -> {
-                                        navController.navigate("album/${item.id}")
-                                    }
-
-                                    is ArtistItem -> {
-                                        navController.navigate("artist/${item.id}")
-                                    }
-
-                                    is PlaylistItem -> {
-                                        navController.navigate("online_playlist/${item.id}")
-                                    }
-
-                                    is PodcastItem -> {
-                                        navController.navigate("podcast/${android.net.Uri.encode(item.browseId)}")
-                                    }
-
-                                    is EpisodeItem -> {
-                                        playerConnection.playQueue(
-                                            YouTubeQueue(
-                                                item.endpoint,
-                                                item.toMediaMetadata(),
-                                            ),
-                                        )
-                                    }
-                                }
-                            },
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surface),
                 )
             }
 
-            if (itemsPage?.continuation != null) {
-                item(key = "loading") {
-                    ShimmerHost {
-                        repeat(3) {
-                            ListItemPlaceHolder()
-                        }
-                    }
-                }
-            }
-        }
-    } else {
-        LazyVerticalGrid(
-            state = lazyGridState,
-            columns = GridCells.Adaptive(minSize = GridThumbnailHeight + 24.dp),
-            contentPadding = contentPadding,
-            modifier = Modifier.fillMaxSize().glassHeaderSource(glassHeader),
-        ) {
-            items(
-                items = itemsPage?.items.orEmpty().distinctBy { it.id },
-                key = { "artist_items_${it.contentKey}" },
-                contentType = { it.contentType },
-            ) { item ->
-                YouTubeGridItem(
-                    item = item,
-                    isActive =
-                        when (item) {
-                            is SongItem -> mediaMetadata?.id == item.id
-                            is AlbumItem -> mediaMetadata?.album?.id == item.id
-                            else -> false
-                        },
-                    isPlaying = isPlaying,
-                    fillMaxWidth = true,
-                    coroutineScope = coroutineScope,
+            if (itemsPage == null) {
+                ShimmerHost(
                     modifier =
                         Modifier
-                            .combinedClickable(
+                            .fillMaxSize()
+                            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current),
+                ) {
+                    repeat(8) {
+                        ListItemPlaceHolder()
+                    }
+                }
+            } else if (itemsLayout == ArtistItemsPageLayout.LIST && itemsPage?.items?.firstOrNull() is SongItem) {
+            LazyColumn(
+                state = lazyListState,
+                contentPadding = contentPadding,
+            ) {
+                items(
+                    items = itemsPage?.items.orEmpty().distinctBy { it.id },
+                    key = { "artist_items_${it.contentKey}" },
+                    contentType = { it.contentType },
+                ) { item ->
+                    YouTubeListItem(
+                        item = item,
+                        isActive =
+                            when (item) {
+                                is SongItem -> mediaMetadata?.id == item.id
+                                is AlbumItem -> mediaMetadata?.album?.id == item.id
+                                else -> false
+                            },
+                        isPlaying = isPlaying,
+                        activeContainerBackdrop = true,
+                        swipeContentBackgroundColor = Color.Transparent,
+                        trailingContent = {
+                            IconButton(
                                 onClick = {
-                                    when (item) {
-                                        is SongItem -> {
-                                            playerConnection.playQueue(
-                                                YouTubeQueue(
-                                                    item.endpoint ?: WatchEndpoint(videoId = item.id),
-                                                    item.toMediaMetadata(),
-                                                ),
-                                            )
-                                        }
-
-                                        is AlbumItem -> {
-                                            navController.navigate("album/${item.id}")
-                                        }
-
-                                        is ArtistItem -> {
-                                            navController.navigate("artist/${item.id}")
-                                        }
-
-                                        is PlaylistItem -> {
-                                            navController.navigate("online_playlist/${item.id}")
-                                        }
-
-                                        is PodcastItem -> {
-                                            navController.navigate("podcast/${android.net.Uri.encode(item.browseId)}")
-                                        }
-
-                                        is EpisodeItem -> {
-                                            playerConnection.playQueue(
-                                                YouTubeQueue(
-                                                    item.endpoint,
-                                                    item.toMediaMetadata(),
-                                                ),
-                                            )
-                                        }
-                                    }
-                                },
-                                onLongClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                     menuState.show {
                                         when (item) {
                                             is SongItem -> {
@@ -394,19 +255,191 @@ fun ArtistItemsScreen(
                                         }
                                     }
                                 },
-                            ).animateItem(),
-                )
-            }
+                                onLongClick = {},
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.more_vert),
+                                    contentDescription = null,
+                                )
+                            }
+                        },
+                        modifier =
+                            Modifier
+                                .clickable {
+                                    when (item) {
+                                        is SongItem -> {
+                                            if (item.id == mediaMetadata?.id) {
+                                                playerConnection.player.togglePlayPause()
+                                            } else {
+                                                val songs =
+                                                    itemsPage
+                                                        ?.items
+                                                        .orEmpty()
+                                                        .filterIsInstance<SongItem>()
+                                                playerConnection.playQueue(
+                                                    ListQueue(
+                                                        title = title,
+                                                        items = songs.map { it.toMediaItem() },
+                                                        startIndex = songs.indexOfFirst { it.id == item.id }.coerceAtLeast(0),
+                                                    ),
+                                                )
+                                            }
+                                        }
 
-            if (itemsPage?.continuation != null) {
-                item(key = "loading") {
-                    ShimmerHost(Modifier.animateItem()) {
-                        GridItemPlaceHolder(fillMaxWidth = true)
+                                        is AlbumItem -> {
+                                            navController.navigate("album/${item.id}")
+                                        }
+
+                                        is ArtistItem -> {
+                                            navController.navigate("artist/${item.id}")
+                                        }
+
+                                        is PlaylistItem -> {
+                                            navController.navigate("online_playlist/${item.id}")
+                                        }
+
+                                        is PodcastItem -> {
+                                            navController.navigate("podcast/${android.net.Uri.encode(item.browseId)}")
+                                        }
+
+                                        is EpisodeItem -> {
+                                            playerConnection.playQueue(
+                                                YouTubeQueue(
+                                                    item.endpoint,
+                                                    item.toMediaMetadata(),
+                                                ),
+                                            )
+                                        }
+                                    }
+                                },
+                    )
+                }
+
+                if (itemsPage?.continuation != null) {
+                    item(key = "loading") {
+                        ShimmerHost {
+                            repeat(3) {
+                                ListItemPlaceHolder()
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            LazyVerticalGrid(
+                state = lazyGridState,
+                columns = GridCells.Adaptive(minSize = GridThumbnailHeight + 24.dp),
+                contentPadding = contentPadding,
+            ) {
+                items(
+                    items = itemsPage?.items.orEmpty().distinctBy { it.id },
+                    key = { "artist_items_${it.contentKey}" },
+                    contentType = { it.contentType },
+                ) { item ->
+                    YouTubeGridItem(
+                        item = item,
+                        isActive =
+                            when (item) {
+                                is SongItem -> mediaMetadata?.id == item.id
+                                is AlbumItem -> mediaMetadata?.album?.id == item.id
+                                else -> false
+                            },
+                        isPlaying = isPlaying,
+                        fillMaxWidth = true,
+                        coroutineScope = coroutineScope,
+                        modifier =
+                            Modifier
+                                .combinedClickable(
+                                    onClick = {
+                                        when (item) {
+                                            is SongItem -> {
+                                                playerConnection.playQueue(
+                                                    YouTubeQueue(
+                                                        item.endpoint ?: WatchEndpoint(videoId = item.id),
+                                                        item.toMediaMetadata(),
+                                                    ),
+                                                )
+                                            }
+
+                                            is AlbumItem -> {
+                                                navController.navigate("album/${item.id}")
+                                            }
+
+                                            is ArtistItem -> {
+                                                navController.navigate("artist/${item.id}")
+                                            }
+
+                                            is PlaylistItem -> {
+                                                navController.navigate("online_playlist/${item.id}")
+                                            }
+
+                                            is PodcastItem -> {
+                                                navController.navigate("podcast/${android.net.Uri.encode(item.browseId)}")
+                                            }
+
+                                            is EpisodeItem -> {
+                                                playerConnection.playQueue(
+                                                    YouTubeQueue(
+                                                        item.endpoint,
+                                                        item.toMediaMetadata(),
+                                                    ),
+                                                )
+                                            }
+                                        }
+                                    },
+                                    onLongClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        menuState.show {
+                                            when (item) {
+                                                is SongItem -> {
+                                                    YouTubeSongMenu(
+                                                        song = item,
+                                                        navController = navController,
+                                                        onDismiss = menuState::dismiss,
+                                                    )
+                                                }
+
+                                                is AlbumItem -> {
+                                                    YouTubeAlbumMenu(
+                                                        albumItem = item,
+                                                        navController = navController,
+                                                        onDismiss = menuState::dismiss,
+                                                    )
+                                                }
+
+                                                is ArtistItem -> {
+                                                    YouTubeArtistMenu(
+                                                        artist = item,
+                                                        onDismiss = menuState::dismiss,
+                                                    )
+                                                }
+
+                                                is PlaylistItem -> {
+                                                    YouTubePlaylistMenu(
+                                                        playlist = item,
+                                                        coroutineScope = coroutineScope,
+                                                        onDismiss = menuState::dismiss,
+                                                    )
+                                                }
+
+                                                is PodcastItem, is EpisodeItem -> Unit
+                                            }
+                                        }
+                                    },
+                                ).animateItem(),
+                    )
+                }
+
+                if (itemsPage?.continuation != null) {
+                    item(key = "loading") {
+                        ShimmerHost(Modifier.animateItem()) {
+                            GridItemPlaceHolder(fillMaxWidth = true)
+                        }
                     }
                 }
             }
         }
-    }
+        }
 
         if (glassHeader.liquidGlassActive) {
             GlassScreenHeaderOverlay(

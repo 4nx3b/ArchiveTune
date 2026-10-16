@@ -14,7 +14,6 @@ import kotlin.math.pow
 @Singleton
 @OptIn(UnstableApi::class)
 class DownmixProcessor @Inject constructor() : AudioProcessor {
-
     private var pendingFormat = AudioFormat.NOT_SET
     private var inputFormat = AudioFormat.NOT_SET
     private var outputBuffer: ByteBuffer = AudioProcessor.EMPTY_BUFFER
@@ -183,7 +182,6 @@ class DownmixProcessor @Inject constructor() : AudioProcessor {
 
         inputFormat = pendingFormat
         if (inputFormat != AudioFormat.NOT_SET) {
-
             rebuildCoefs(resetLfeState = true)
         }
     }

@@ -27,6 +27,9 @@ import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.constants.TikTokMainLyricsEnabledKey
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.SpotifyCanvasKey
+import moe.rukamori.archivetune.constants.ProceduralArtworkEnabledKey
+import moe.rukamori.archivetune.constants.CanvasAudioReactiveKey
+import moe.rukamori.archivetune.constants.DolbyFfmpegDecoderKey
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
 import moe.rukamori.archivetune.constants.AudioOffload
 import moe.rukamori.archivetune.constants.FloatDspEnabledKey
@@ -45,7 +48,6 @@ import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.DisableScreenshotKey
 import moe.rukamori.archivetune.constants.EnableVideoPlaybackKey
 import moe.rukamori.archivetune.constants.EnablePipModeKey
-import moe.rukamori.archivetune.constants.DynamicThemeKey
 import moe.rukamori.archivetune.constants.EnableDiscordRPCKey
 import moe.rukamori.archivetune.constants.EnableLastFMScrobblingKey
 import moe.rukamori.archivetune.constants.EnableTranslatorKey
@@ -71,6 +73,7 @@ import moe.rukamori.archivetune.constants.LiquidGlassDepth3DKey
 import moe.rukamori.archivetune.constants.LiquidGlassBackdropVibrancyKey
 import moe.rukamori.archivetune.constants.LiquidGlassAdaptiveLuminanceKey
 import moe.rukamori.archivetune.constants.LiquidGlassNavBarEnabledKey
+import moe.rukamori.archivetune.constants.SukisuLiquidGlassNavBarKey
 import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
 import moe.rukamori.archivetune.constants.PauseListenHistoryKey
 import moe.rukamori.archivetune.constants.PauseOnDeviceMuteKey
@@ -78,7 +81,6 @@ import moe.rukamori.archivetune.constants.PauseSearchHistoryKey
 import moe.rukamori.archivetune.constants.PermanentShuffleKey
 import moe.rukamori.archivetune.constants.PersistentQueueKey
 import moe.rukamori.archivetune.constants.ProxyEnabledKey
-import moe.rukamori.archivetune.constants.PureBlackKey
 import moe.rukamori.archivetune.constants.RandomThemeOnStartupKey
 import moe.rukamori.archivetune.constants.SeekExtraSeconds
 import moe.rukamori.archivetune.constants.ShowHomeCategoryChipsKey
@@ -91,7 +93,6 @@ import moe.rukamori.archivetune.constants.SwipeToSongKey
 import moe.rukamori.archivetune.constants.TelegramLosslessOnlyKey
 import moe.rukamori.archivetune.constants.TidalArtworkFallbackEnabledKey
 import moe.rukamori.archivetune.constants.TidalEnabledKey
-import moe.rukamori.archivetune.constants.TranslateLyricsKey
 import moe.rukamori.archivetune.constants.UseSystemFontKey
 import moe.rukamori.archivetune.constants.WakelockKey
 import moe.rukamori.archivetune.constants.AllowAgeRestrictedKey
@@ -108,6 +109,8 @@ import moe.rukamori.archivetune.constants.AodShowTimeLabelsKey
 import moe.rukamori.archivetune.constants.AutoChoosePlaybackClientKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.constants.DeezerEnabledKey
+import moe.rukamori.archivetune.constants.SoundCloudEnabledKey
+import moe.rukamori.archivetune.constants.SpotifyDirectEnabledKey
 import moe.rukamori.archivetune.constants.EnableDnsOverHttpsKey
 import moe.rukamori.archivetune.constants.EnableMusixmatchExperimentalKey
 import moe.rukamori.archivetune.constants.HideCachedCardKey
@@ -130,7 +133,6 @@ import moe.rukamori.archivetune.constants.StreamBypassProxyKey
 import moe.rukamori.archivetune.constants.SwipeThumbnailKey
 import moe.rukamori.archivetune.constants.TabletModeEnabledKey
 import moe.rukamori.archivetune.constants.TidalAccountFirstKey
-import moe.rukamori.archivetune.constants.TidalAnimatedCoversEnabledKey
 import moe.rukamori.archivetune.constants.ListenTogetherSyncVolumeKey
 import moe.rukamori.archivetune.utils.rememberPreference
 
@@ -233,10 +235,8 @@ fun buildSettingsGroups(
             keywords = listOf("appearance", "theme", "dark", "light", "color", "palette", "style", "design"),
             onClick = { navController.navigate("settings/appearance") },
             children = listOf(
-                SettingsChild("Dynamic theme", "dynamic_theme", listOf("dynamic theme", "material you", "dynamic color")) { SearchResultSwitch(DynamicThemeKey, false) },
                 SettingsChild("Random theme on startup", "random_theme_on_startup", listOf("random theme", "random color", "shuffle theme")) { SearchResultSwitch(RandomThemeOnStartupKey, false) },
                 SettingsChild("Dark theme", "dark_theme", listOf("dark", "dark theme", "night", "amoled")),
-                SettingsChild("Pure black", "pure_black", listOf("pure black", "amoled", "oled", "black background")) { SearchResultSwitch(PureBlackKey, false) },
                 SettingsChild("Color palette", "color_palette", listOf("color palette", "accent color", "theme color", "color")),
                 SettingsChild("Color source", "color_source", listOf("color source", "color", "dynamic color", "material you")),
                 SettingsChild("App icon", "app_icon", listOf("icon", "app icon", "icon pack", "launcher icon")),
@@ -273,6 +273,7 @@ fun buildSettingsGroups(
                 SettingsChild("Hide labels in navigation bar", "hide_navigation_bar_labels", listOf("hide labels", "navigation labels", "nav labels", "icons only")) { SearchResultSwitch(HideNavigationBarLabelsKey, false) },
                 SettingsChild("Navigation bar customization", "navigation_bar_settings", listOf("navigation bar", "nav bar dimensions", "nav bar opacity", "nav bar width", "nav bar height", "nav bar corner radius", "nav bar label spacing")),
                 SettingsChild("Hide scrollbar", "hide_scrollbar", listOf("scrollbar", "scroll bar", "hide scroll", "no scrollbar")) { SearchResultSwitch(HideScrollbarKey, false) },
+                SettingsChild("Back animation style", "back_animation_style", listOf("back gesture", "predictive back", "back animation", "gesture animation")),
                 SettingsChild("Default open tab", "default_open_tab", listOf("default tab", "home tab", "start page", "open tab")),
                 SettingsChild("Show home category chips", "show_home_category_chips", listOf("home chips", "category chips", "home category", "chips")) { SearchResultSwitch(ShowHomeCategoryChipsKey, false) },
                 SettingsChild("Language", "app_language", listOf("language", "app language", "locale")),
@@ -354,6 +355,7 @@ fun buildSettingsGroups(
                 SettingsChild("Frosted navigation bar", "navigation_bar_frosted_blur", listOf("frosted nav", "frosted navigation", "frosted blur")) { SearchResultSwitch(NavigationBarFrostedBlurKey, false) },
                 SettingsChild("Tint frosted navigation bar", "navigation_bar_tint_frosted_blur", listOf("tint frosted", "tint nav bar", "frosted tint", "coloured nav bar")) { SearchResultSwitch(NavigationBarTintFrostedBlurKey, false) },
                 SettingsChild("Liquid Glass navigation bar", "liquid_glass_nav_bar", listOf("liquid glass nav", "glass navigation", "liquid nav")) { SearchResultSwitch(LiquidGlassNavBarEnabledKey, false) },
+                SettingsChild("SukiSU liquid glass navigation bar", "sukisu_liquid_glass_nav_bar", listOf("sukisu nav", "sukisu liquid glass", "floating glass bar", "refraction nav")) { SearchResultSwitch(SukisuLiquidGlassNavBarKey, false) },
                 SettingsChild("Hide labels in navigation bar", "hide_navigation_bar_labels", listOf("hide labels", "navigation labels", "nav labels", "icons only")) { SearchResultSwitch(HideNavigationBarLabelsKey, false) },
                 SettingsChild("Navigation bar dimensions", "navigation_bar_dimensions", listOf("nav bar height", "nav bar width", "nav bar opacity", "nav bar corner radius", "nav bar label spacing", "nav bar size")),
             ),
@@ -386,6 +388,9 @@ fun buildSettingsGroups(
                 SettingsChild("ArchiveTune Canvas", "archive_tune_canvas", listOf("canvas", "animated artwork", "motion artwork", "live artwork")) { SearchResultSwitch(ArchiveTuneCanvasKey, true) },
                 SettingsChild("Spotify Canvas", "spotify_canvas", listOf("spotify", "canvas", "spotify canvas", "looping video", "music video", "video artwork")) { SearchResultSwitch(SpotifyCanvasKey, false) },
                 SettingsChild("Canvas resolvers", "canvas_resolvers", listOf("canvas resolver", "canvas resolvers", "canvas endpoint", "canvas fallback", "spotify canvas resolver")),
+                SettingsChild("Animate static album art", "procedural_artwork", listOf("animate album art", "fluid artwork", "kawarp", "square tunnel", "procedural artwork", "artwork motion", "wave distortion")) { SearchResultSwitch(ProceduralArtworkEnabledKey, false) },
+                SettingsChild("Motion style", "procedural_artwork_style", listOf("motion style", "kawarp", "square tunnel", "corridor", "fluid wave")),
+                SettingsChild("Audio-reactive animation", "canvas_audio_reactive", listOf("audio reactive", "bass", "beats", "music reactive", "experimental")) { SearchResultSwitch(CanvasAudioReactiveKey, false) },
                 SettingsChild("Tidal artwork fallback", "tidal_artwork_fallback", listOf("tidal artwork", "artwork fallback", "tidal cover", "hi-res artwork")) { SearchResultSwitch(TidalArtworkFallbackEnabledKey, true) },
                 SettingsChild("Persistent queue", "persistent_queue", listOf("queue", "persistent", "save queue", "resume")) { SearchResultSwitch(PersistentQueueKey, true) },
                 SettingsChild("Permanent shuffle", "permanent_shuffle", listOf("shuffle", "random", "permanent")) { SearchResultSwitch(PermanentShuffleKey, false) },
@@ -405,6 +410,7 @@ fun buildSettingsGroups(
                 SettingsChild("Check source", "check_source", listOf("check source", "source health", "test source", "source diagnostics", "verify source", "source status")),
 
                 SettingsChild("Audiophile", "audiophile", listOf("audiophile", "dsp", "engine", "tryptify", "lastwave", "float", "usb exclusive", "bit perfect", "dac", "autoeq")),
+                SettingsChild("Dolby decoder (FFmpeg)", "dolby_ffmpeg_decoder", listOf("dolby", "ffmpeg", "ac-4", "ac4", "dts", "software decoder", "decoder extension")) { SearchResultSwitch(DolbyFfmpegDecoderKey, false) },
                 SettingsChild("Bit-Perfect Output", "bit_perfect_output", listOf("bit perfect", "bitperfect", "native output", "direct playback", "pcm24", "pcm32", "sample rate", "native rate")) { SearchResultSwitch(BitPerfectOutputKey, false) },
                 SettingsChild("Native Sample Rate", "bit_perfect_native_rate", listOf("native sample rate", "source rate", "resampling", "rate matching")) { SearchResultSwitch(BitPerfectNativeRateKey, true) },
                 SettingsChild("32-bit float DSP", "float_dsp", listOf("dsp", "float", "32-bit", "limiter", "dither", "lossless dsp", "bit perfect")) { SearchResultSwitch(FloatDspEnabledKey, false) },
@@ -415,7 +421,6 @@ fun buildSettingsGroups(
                 SettingsChild("Enable Tidal source", "tidal_enable", listOf("tidal", "enable tidal", "tidal source", "lossless", "hifi")) { SearchResultSwitch(TidalEnabledKey, true) },
                 SettingsChild("Use my Tidal account first", "tidal_account_first", listOf("tidal account first", "my tidal account", "prefer my account")) { SearchResultSwitch(TidalAccountFirstKey, true) },
                 SettingsChild("Tidal audio quality", "tidal_audio_quality", listOf("tidal quality", "tidal audio quality", "tidal hifi", "tidal max", "mqa")),
-                SettingsChild("Tidal animated covers", "tidal_animated_covers", listOf("tidal animated covers", "tidal canvas", "tidal video cover", "animated cover")) { SearchResultSwitch(TidalAnimatedCoversEnabledKey, false) },
                 SettingsChild("Manage Tidal instances", "tidal_manage_instances", listOf("tidal instances", "tidal server", "tidal endpoint", "manage instances")),
                 SettingsChild("Enable Qobuz source", "qobuz_enable", listOf("qobuz", "enable qobuz", "qobuz source", "hi-res", "flac")) { SearchResultSwitch(QobuzEnabledKey, false) },
                 SettingsChild("Qobuz audio quality", "qobuz_audio_quality", listOf("qobuz quality", "qobuz audio quality", "hi-res", "flac", "cd quality", "24 bit")),
@@ -426,6 +431,11 @@ fun buildSettingsGroups(
                 SettingsChild("Deezer audio quality", "deezer_audio_quality", listOf("deezer quality", "deezer audio quality", "deezer flac")),
                 SettingsChild("Enable JioSaavn source", "jiosaavn_enable", listOf("jiosaavn", "jio saavn", "saavn", "enable jiosaavn", "indian music")) { SearchResultSwitch(JioSaavnEnabledKey, false) },
                 SettingsChild("JioSaavn audio quality", "jiosaavn_audio_quality", listOf("jiosaavn quality", "saavn quality", "jiosaavn audio quality")),
+                SettingsChild("Enable SoundCloud source", "soundcloud_enable", listOf("soundcloud", "enable soundcloud", "soundcloud source", "sc streaming")) { SearchResultSwitch(SoundCloudEnabledKey, false) },
+                SettingsChild("SoundCloud audio quality", "soundcloud_audio_quality", listOf("soundcloud quality", "soundcloud audio quality", "aac 160", "mp3 128")),
+                SettingsChild("SoundCloud OAuth token", "soundcloud_auth_token", listOf("soundcloud token", "soundcloud oauth", "soundcloud login", "soundcloud cookie")),
+                SettingsChild("Enable Spotify direct streaming", "spotify_direct_enable", listOf("spotify direct", "direct spotify", "spotify streaming", "spotify servers")) { SearchResultSwitch(SpotifyDirectEnabledKey, false) },
+                SettingsChild("Spotify direct quality", "spotify_direct_quality", listOf("spotify direct quality", "spotify bitrate", "spotify aac")),
             ),
         )
 
@@ -496,7 +506,7 @@ fun buildSettingsGroups(
             children = listOf(
                 SettingsChild("Lyrics provider", "lyrics_provider", listOf("lyrics provider", "source", "lrclib", "kugou", "netease", "musixmatch", "betterlyrics", "portato", "youlyplus", "unison")),
 
-                SettingsChild("Translate lyrics", "translate_lyrics", listOf("translate", "translation", "lyrics translation")) { SearchResultSwitch(TranslateLyricsKey, false) },
+                SettingsChild("Translate lyrics", "translate_lyrics", listOf("translate", "translation", "lyrics translation")) { SearchResultSwitch(AutoTranslateLyricsKey, false) },
                 SettingsChild("Enable translator", "enable_translator", listOf("translator", "translation engine", "lyrics translator")) { SearchResultSwitch(EnableTranslatorKey, false) },
                 SettingsChild("Lyrics font size", "lyrics_font_size", listOf("font size", "lyrics size", "text size", "lyrics text size")),
                 SettingsChild("Lyrics line spacing", "lyrics_line_spacing", listOf("line spacing", "lyrics spacing", "lyrics line gap", "lyrics padding")),
@@ -629,6 +639,9 @@ fun buildSettingsGroups(
                 SettingsChild("Show tags in library", "show_tags_in_library", listOf("tags", "library tags", "show tags")) { SearchResultSwitch(ShowTagsInLibraryKey, false) },
                 SettingsChild("Low data mode", "low_data_mode", listOf("low data", "data saver", "save data", "metered", "data mode")) { SearchResultSwitch(LowDataModeKey, true) },
                 SettingsChild("Force high refresh rate", "force_high_refresh_rate", listOf("refresh rate", "high refresh", "120hz", "90hz", "smooth")) { SearchResultSwitch(ForceHighRefreshRateKey, false) },
+                SettingsChild("Overscroll style", "overscroll_style", listOf("overscroll", "rubber band", "bounce", "stretch", "scroll physics")),
+                SettingsChild("Rubber band tension", "overscroll_rubber_band_tension", listOf("overscroll", "rubber band", "tension", "stretch distance")),
+                SettingsChild("Bounce-back speed", "overscroll_bounce_speed", listOf("overscroll", "bounce", "settle", "spring", "bounce back")),
                 SettingsChild("Open supported links by default", "open_supported_links", listOf("open links", "supported links", "default links", "deep link", "default browser app")),
             ),
         )
@@ -684,6 +697,7 @@ fun buildSettingsGroups(
                 SettingsChild("Qobuz tokens", "qobuz_tokens", listOf("qobuz token", "qobuz app secret", "qobuz credential")),
                 SettingsChild("Qobuz instances", "qobuz_instances", listOf("qobuz instance", "qobuz server", "qobuz url", "qobuz endpoint")),
                 SettingsChild("Deezer", "deezer", listOf("deezer", "deezer login", "deezer premium", "deezer account", "deezer session")),
+                SettingsChild("Apple Music login", "applemusic", listOf("apple music", "applemusic", "itunes", "music kit", "apple login", "apple music login")),
                 SettingsChild("Telegram", "telegram", listOf("telegram", "telegram channel", "channel sync", "telegram music", "telegram bot")),
                 SettingsChild("Telegram login", "telegram_login", listOf("telegram login", "telegram session", "telegram account", "sign in telegram")),
                 SettingsChild("Telegram browse channels", "telegram_browse_channels", listOf("browse channels", "channels", "telegram channels", "music channels")),

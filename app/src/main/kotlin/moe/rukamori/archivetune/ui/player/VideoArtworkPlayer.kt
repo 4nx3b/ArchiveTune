@@ -61,6 +61,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.text.CueGroup
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -89,6 +90,7 @@ import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.withTimeoutOrNull
 import moe.rukamori.archivetune.constants.VideoPlaybackSpeedKey
 import moe.rukamori.archivetune.constants.AutoChoosePlaybackClientKey
+import moe.rukamori.archivetune.constants.MaxVideoCacheSizeKey
 import moe.rukamori.archivetune.constants.PlayerStreamClient
 import moe.rukamori.archivetune.constants.PlayerStreamClientKey
 import moe.rukamori.archivetune.innertube.NewPipeUtils
@@ -99,6 +101,8 @@ import moe.rukamori.archivetune.simpstream.SimpMusicPlayer
 import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.StreamClientUtils
 import moe.rukamori.archivetune.utils.rememberPreference
+import dagger.hilt.android.EntryPointAccessors
+import moe.rukamori.archivetune.di.VideoCacheEntryPoint
 import moe.rukamori.archivetune.utils.PreferenceStore
 import moe.rukamori.archivetune.utils.YTPlayerUtils
 import moe.rukamori.archivetune.extensions.toEnum
@@ -137,6 +141,8 @@ private const val VideoStuckBufferingTimeoutMs = 8000L
 private fun maxVideoHeightFor(preferredHeight: Int?): Int = VideoQualityPreference.ceilingFor(preferredHeight)
 
 private const val VideoReadyHoldTimeoutMs = 10000L
+private const val VideoFirstFrameKickIntervalMs = 2500L
+private const val VideoFirstFrameKickMaxAttempts = 12
 
 private const val VideoClientAttemptTimeoutMs = 8000L
 
@@ -169,7 +175,12 @@ private const val VideoStreamInfoCacheMaxEntries = 16
 private const val VideoStreamInfoCacheValidityMs = 45 * 60 * 1000L
 
 private val videoStreamInfoCache =
-    java.util.Collections.synchronizedMap(LinkedHashMap<String, Pair<Long, VideoStreamInfo>>())
+    java.util.Collections.synchronizedMap(
+        object : LinkedHashMap<String, Pair<Long, VideoStreamInfo>>(16, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Pair<Long, VideoStreamInfo>>): Boolean =
+                size > VideoStreamInfoCacheMaxEntries
+        },
+    )
 
 private fun resolveVideoStreamInfoFromCache(cacheKey: String): VideoStreamInfo? {
     val cached = videoStreamInfoCache[cacheKey] ?: return null
@@ -238,7 +249,7 @@ private val VideoStreamHttpClient by lazy {
         }.build()
 }
 
-private fun videoStreamHttpClient(): OkHttpClient = VideoStreamHttpClient
+internal fun videoStreamHttpClient(): OkHttpClient = VideoStreamHttpClient
 
 @Stable
 class VideoArtworkState internal constructor(
@@ -354,6 +365,7 @@ fun rememberVideoArtworkState(
     onRequestResumeMain: () -> Unit,
     isMainAudioBuffering: Boolean = false,
     mainAudioReady: Boolean = false,
+    sheetSurfaceActive: Boolean = true,
 ): VideoArtworkState {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -368,17 +380,39 @@ fun rememberVideoArtworkState(
     val updatedHoldAudioUntilVideoReady by rememberUpdatedState(holdAudioUntilVideoReady)
     val updatedIsMainAudioBuffering by rememberUpdatedState(isMainAudioBuffering)
     val updatedMainAudioReady by rememberUpdatedState(mainAudioReady)
+    val updatedSheetSurfaceActive by rememberUpdatedState(sheetSurfaceActive)
 
     val okHttpClient = remember { videoStreamHttpClient() }
 
+    val (maxVideoCacheSize) = rememberPreference(MaxVideoCacheSizeKey, defaultValue = 512)
+    val videoCacheEnabled = maxVideoCacheSize != 0
+    val videoCache =
+        remember {
+            runCatching {
+                EntryPointAccessors.fromApplication(
+                    context.applicationContext,
+                    VideoCacheEntryPoint::class.java,
+                ).videoCache()
+            }.getOrNull()
+        }
+
     val mediaSourceFactory =
-        remember(okHttpClient) {
-            DefaultMediaSourceFactory(
+        remember(okHttpClient, videoCache, videoCacheEnabled) {
+            val upstreamFactory =
                 DefaultDataSource.Factory(
                     context,
                     OkHttpDataSource.Factory(okHttpClient),
-                ),
-            )
+                )
+            val factory =
+                if (videoCache != null && videoCacheEnabled) {
+                    CacheDataSource.Factory()
+                        .setCache(videoCache)
+                        .setUpstreamDataSourceFactory(upstreamFactory)
+                        .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+                } else {
+                    upstreamFactory
+                }
+            DefaultMediaSourceFactory(factory)
         }
 
     val renderersFactory =
@@ -436,15 +470,16 @@ fun rememberVideoArtworkState(
 
     var lastLoadedStreamUrl by remember { mutableStateOf<String?>(null) }
     var lastLoadedCaptionTrack by remember { mutableStateOf<PlayerResponse.CaptionTrack?>(null) }
+    var appInForeground by remember { mutableStateOf(true) }
 
     var videoRecoveryAttempts by remember { mutableStateOf(0) }
     var videoRecoveryRequests by remember { mutableIntStateOf(0) }
 
-    fun beginAudioHold() {
+    fun beginAudioHold(resumeOverride: Boolean = false) {
         if (!updatedHoldAudioUntilVideoReady) return
         if (awaitingVideoReady) return
         awaitingVideoReady = true
-        resumeAudioAfterVideoReady = shouldPlay
+        resumeAudioAfterVideoReady = shouldPlay || resumeOverride
 
         if (shouldPlay) updatedOnRequestPauseMain()
         Timber
@@ -546,7 +581,10 @@ fun rememberVideoArtworkState(
         videoRecoveryAttempts = 0
         videoRecoveryRequests = 0
 
-        beginAudioHold()
+        val backgroundHoldWasPlaying =
+            moe.rukamori.archivetune.playback.VideoBackgroundPreloader.claimUiTakeover(videoId)
+
+        beginAudioHold(resumeOverride = backgroundHoldWasPlaying)
 
         val resolved =
             withContext(Dispatchers.IO) {
@@ -720,10 +758,40 @@ fun rememberVideoArtworkState(
     LaunchedEffect(state.streamUrl) {
         if (state.streamUrl == null) return@LaunchedEffect
         delay(VideoReadyHoldTimeoutMs)
-        if (awaitingVideoReady && !state.isVideoReady) {
-            Timber
-                .tag(VideoPlaybackLogTag)
-                .w("Video first frame still pending after ${VideoReadyHoldTimeoutMs}ms — audio stays held until it arrives")
+        var kicks = 0
+        while (!state.isVideoReady && !state.hasPlaybackFailed) {
+            if (!updatedSheetSurfaceActive || !appInForeground) {
+                delay(500)
+                continue
+            }
+            if (kicks >= VideoFirstFrameKickMaxAttempts) {
+                Timber
+                    .tag(VideoPlaybackLogTag)
+                    .w("Video never rendered a first frame after $kicks kicks — falling back to artwork")
+                declareVideoFailure("first frame never rendered")
+                break
+            }
+            if (exoPlayer.playbackState == Player.STATE_READY && exoPlayer.playerError == null) {
+                Timber
+                    .tag(VideoPlaybackLogTag)
+                    .w(
+                        "Video first frame still pending while READY — kicking a position reset to force the render (backgrounded start recovery)",
+                    )
+                exoPlayer.seekTo(exoPlayer.currentPosition)
+                state.lastSeekAtMs = SystemClock.elapsedRealtime()
+                kicks++
+            }
+            delay(VideoFirstFrameKickIntervalMs)
+        }
+    }
+
+    LaunchedEffect(updatedSheetSurfaceActive) {
+        if (!updatedSheetSurfaceActive) return@LaunchedEffect
+        if (state.hasPlaybackFailed || state.isVideoReady) return@LaunchedEffect
+        if (exoPlayer.playerError != null) return@LaunchedEffect
+        if (exoPlayer.playbackState == Player.STATE_READY) {
+            exoPlayer.seekTo(exoPlayer.currentPosition)
+            state.lastSeekAtMs = SystemClock.elapsedRealtime()
         }
     }
 
@@ -1008,19 +1076,37 @@ fun rememberVideoArtworkState(
     DisposableEffect(exoPlayer, lifecycleOwner) {
         val observer =
             LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_RESUME) {
+                    appInForeground = true
+                }
+                if (event == Lifecycle.Event.ON_STOP) {
+                    appInForeground = false
+                    runCatching { exoPlayer.pause() }
+                }
                 if (
                     (event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_RESUME) &&
                     !state.hasPlaybackFailed &&
                     exoPlayer.playerError == null &&
-                    state.streamUrl != null &&
-                    state.isVideoReady &&
-                    updatedMainAudioReady
+                    state.streamUrl != null
                 ) {
-                    exoPlayer.setVideoPlayback(shouldPlay)
-                }
-                if (event == Lifecycle.Event.ON_STOP) {
-                    runCatching { exoPlayer.setVideoSurface(null) }
-                    runCatching { exoPlayer.stop() }
+                    if (awaitingVideoReady && !state.isVideoReady &&
+                        exoPlayer.playbackState == Player.STATE_READY
+                    ) {
+                        exoPlayer.seekTo(exoPlayer.currentPosition)
+                        state.lastSeekAtMs = SystemClock.elapsedRealtime()
+                    }
+                    if (updatedMainAudioReady) {
+                        if (state.isVideoReady) {
+                            val mainPos = currentPosition()
+                            val videoPos = exoPlayer.currentPosition
+                            if (mainPos > 0 && kotlin.math.abs(videoPos - mainPos) > VideoSoftSeekDriftThresholdMs) {
+                                exoPlayer.seekTo(mainPos)
+                                state.lastSeekAtMs = SystemClock.elapsedRealtime()
+                                state.lastSurfaceReanchorAtMs = state.lastSeekAtMs
+                            }
+                        }
+                        exoPlayer.setVideoPlayback(shouldPlay)
+                    }
                 }
             }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -1142,12 +1228,19 @@ fun rememberVideoArtworkState(
                             state.bufferingStartedAtMs = 0L
                             state.bufferingRecoveries = 0
 
+                            if (awaitingVideoReady && !updatedSheetSurfaceActive) {
+                                Timber
+                                    .tag(VideoPlaybackLogTag)
+                                    .d("Video buffered without an on-screen surface — releasing the audio hold")
+                                releaseAudioHold(resumeMainAudio = true)
+                            }
+
                             val effectiveShouldPlay =
                                 shouldPlay ||
                                     (state.isResyncing && state.wasPlayingBeforeResync) ||
                                     (state.isChangingQuality && state.wasPlayingBeforeQualityChange) ||
                                     resumeAudioAfterVideoReady
-                            if (effectiveShouldPlay && !state.hasPlaybackFailed &&
+                            if (effectiveShouldPlay && !awaitingVideoReady && !state.hasPlaybackFailed &&
                                 exoPlayer.playerError == null
                             ) {
                                 val resumeMainAudio =
@@ -1204,6 +1297,7 @@ fun rememberVideoArtworkStateOrNull(
     onRequestResumeMain: () -> Unit,
     isMainAudioBuffering: Boolean = false,
     mainAudioReady: Boolean = false,
+    sheetSurfaceActive: Boolean = true,
 ): VideoArtworkState? {
     return if (videoId.isNullOrBlank()) {
         onPlaybackFailed()
@@ -1222,6 +1316,7 @@ fun rememberVideoArtworkStateOrNull(
             onRequestResumeMain = onRequestResumeMain,
             isMainAudioBuffering = isMainAudioBuffering,
             mainAudioReady = mainAudioReady,
+            sheetSurfaceActive = sheetSurfaceActive,
         )
     }
 }
@@ -1311,8 +1406,9 @@ private fun VideoAmbientBackdrop(
             ),
         label = "video-ambient-y",
     )
-    val driftX = if (isPreS) 0f else animatedDriftX
-    val driftY = if (isPreS) 0f else animatedDriftY
+    val preSDriftOff = isPreS
+    fun currentDrift(): Pair<Float, Float> =
+        if (preSDriftOff) 0f to 0f else animatedDriftX to animatedDriftY
 
     val blurredBitmap by produceState<Bitmap?>(null, thumbnailUrl) {
         value =
@@ -1354,13 +1450,14 @@ private fun VideoAmbientBackdrop(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .graphicsLayer(
-                            translationX = driftX,
-                            translationY = driftY,
-                            scaleX = 1.4f,
-                            scaleY = 1.4f,
-                            alpha = 0.85f,
-                        ),
+                        .graphicsLayer {
+                            val (x, y) = currentDrift()
+                            translationX = x
+                            translationY = y
+                            scaleX = 1.4f
+                            scaleY = 1.4f
+                            alpha = 0.85f
+                        },
             )
         }
 
@@ -1484,7 +1581,7 @@ private suspend fun resolveVideoStreamUrlViaSimpMusic(
     )
 }
 
-private suspend fun resolveVideoStreamUrl(
+internal suspend fun resolveVideoStreamUrl(
     videoId: String,
     preferredHeight: Int?,
 ): VideoStreamInfo? {

@@ -276,7 +276,6 @@ fun EqualizerScreen(
             item {
               tf.monochrome.android.devedit.DevEditable("eq_graph", Modifier.fillMaxWidth()) {
                 Column {
-
                     var smoothingDrag by remember(smoothing) { mutableFloatStateOf(smoothing) }
                     Row(
                         modifier = Modifier
@@ -651,10 +650,7 @@ fun EqualizerScreen(
                                 }
                             }
                         )
-                        // Unglassed: the floating menu panel renders inside
-                        // the glass menu's color scheme, whose container colors
-                        // are near-transparent — re-applying the unglassed
-                        // scheme keeps the panel opaque and readable.
+
                         UnglassedDialogTheme {
                         DropdownMenu(
                             expanded = showTargetMenu,
@@ -1086,9 +1082,7 @@ fun EqualizerScreen(
     }
 
     if (showSaveDialog) {
-        // Unglassed: this dialog renders inside the glass menu's color scheme,
-        // whose container colors are near-transparent — re-applying the
-        // unglassed scheme gives the dialog a standard opaque container.
+
         UnglassedDialogTheme {
             AlertDialog(
                 onDismissRequest = { showSaveDialog = false },
@@ -1147,9 +1141,7 @@ fun EqualizerScreen(
     }
 
     if (showHeadphoneSelect) {
-        // Unglassed: full-screen dialog inside the glass menu — re-apply the
-        // unglassed scheme so the dialog container and the hosted screen draw
-        // with standard opaque surfaces.
+
         UnglassedDialogTheme {
             AlertDialog(
                 onDismissRequest = { showHeadphoneSelect = false },

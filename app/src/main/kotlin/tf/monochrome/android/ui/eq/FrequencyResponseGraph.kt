@@ -229,7 +229,6 @@ fun FrequencyResponseGraph(
                             if (!change.pressed) break
                             val pos = change.position
                             if (!started) {
-
                                 if ((pos - down.position).getDistance() < touchSlop) continue
                                 started = true
                                 selectedBandId = bandId
@@ -347,7 +346,6 @@ fun FrequencyResponseGraph(
                 }
 
                 if (isSelected) {
-
                     drawLine(
                         color = curveNeutral.copy(alpha = 0.25f),
                         start = Offset(dotX, GRAPH_PADDING_TOP),

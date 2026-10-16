@@ -89,6 +89,12 @@ object SpotifyPlaybackResolver {
 
             val bestMetadata = best.toMediaMetadata()
             val useSpotifyMetadata = metadataSource == MetadataSource.SPOTIFY
+            val spotifyArtwork =
+                if (useSpotifyMetadata) {
+                    Spotify.highResTrackArtwork(track)
+                } else {
+                    null
+                }
             val metadata =
                 bestMetadata.copy(
                     title = if (useSpotifyMetadata) track.name.takeIf(String::isNotBlank) ?: best.title else best.title,
@@ -105,12 +111,7 @@ object SpotifyPlaybackResolver {
                         } else {
                             bestMetadata.artists
                         },
-                    thumbnailUrl =
-                        if (useSpotifyMetadata) {
-                            SpotifyMapper.getTrackThumbnail(track) ?: best.thumbnail
-                        } else {
-                            best.thumbnail
-                        },
+                    thumbnailUrl = spotifyArtwork ?: best.thumbnail,
                     duration = if (useSpotifyMetadata && track.durationMs > 0) track.durationMs / 1000 else best.duration ?: -1,
                     explicit = track.explicit || best.explicit,
                     album =
@@ -123,6 +124,7 @@ object SpotifyPlaybackResolver {
                     spotifyTrackId = track.id.takeIf(String::isNotBlank),
 
                     isrc = track.isrc,
+                    preferredSource = moe.rukamori.archivetune.constants.AudioSourceType.SPOTIFY.name,
                 )
 
             mutex.withLock {

@@ -37,7 +37,6 @@ import kotlin.coroutines.suspendCoroutine
 class TelegramFlow(
     private val resultHandler: ResultHandlerFlow = ResultHandlerStateFlow()
 ) : Flow<TdApi.Object> by resultHandler, Closeable {
-
     interface ResultHandlerFlow : Client.ResultHandler, Flow<TdApi.Object>
 
     var client: Client? = null

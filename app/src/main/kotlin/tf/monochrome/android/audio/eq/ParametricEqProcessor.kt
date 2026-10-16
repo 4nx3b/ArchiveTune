@@ -65,7 +65,6 @@ class ParametricEqProcessor @Inject constructor() : AudioProcessor {
             throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
         }
         if (inputAudioFormat.channelCount > 2) {
-
             pendingFormat = AudioFormat.NOT_SET
             inputFormat = AudioFormat.NOT_SET
             return AudioFormat.NOT_SET

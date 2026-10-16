@@ -25,6 +25,7 @@ data class DirectStream(
 
     val sampleRate: Int? = null,
     val bitDepth: Int? = null,
+    val bitrate: Int? = null,
 )
 
 fun DirectStream.pcmBitrateOrNull(channels: Int = 2): Int? {
@@ -256,12 +257,13 @@ object AudioSourceConfig {
             AudioSourceType.TIDAL,
             AudioSourceType.QOBUZ,
             AudioSourceType.QOBUZ_BACKUP,
+            AudioSourceType.DEEZER,
+            AudioSourceType.APPLE,
             AudioSourceType.JIOSAAVN,
+            AudioSourceType.SOUNDCLOUD,
+            AudioSourceType.SPOTIFY,
             AudioSourceType.YOUTUBE,
         )
-
-    private val RETIRED_FROM_CHAIN =
-        setOf(AudioSourceType.APPLE, AudioSourceType.DEEZER)
 
     private val ALWAYS_ENABLED = setOf(AudioSourceType.YOUTUBE)
 
@@ -274,7 +276,6 @@ object AudioSourceConfig {
                 ?.split(',')
                 ?.mapNotNull { parseType(it) }
                 ?.distinct()
-                ?.filterNot { it in RETIRED_FROM_CHAIN }
                 .orEmpty()
         if (stored.isEmpty()) return DEFAULT_ORDER
 
@@ -318,7 +319,6 @@ object AudioSourceConfig {
         rawOrder: String?,
         source: AudioSourceType,
     ): String {
-        if (source in RETIRED_FROM_CHAIN) return parseOrder(rawOrder).joinToString(",") { it.name }
         val parsed = parseOrder(rawOrder)
         if (source in parsed) return parsed.joinToString(",") { it.name }
         val above = parsed.filterNot { it == AudioSourceType.YOUTUBE }

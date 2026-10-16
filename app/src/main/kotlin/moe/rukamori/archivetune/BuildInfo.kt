@@ -18,6 +18,23 @@ internal val defaultUpdateChannel: UpdateChannel
 internal val currentBuildHash: String?
     get() = BuildConfig.NIGHTLY_BUILD_HASH.takeIf { it.isNotBlank() }
 
+internal val currentNightlyTag: String?
+    get() = BuildConfig.NIGHTLY_TAG.takeIf { it.isNotBlank() }
+
+internal fun displayVersionName(
+    versionName: String = BuildConfig.VERSION_NAME,
+    buildHash: String? = currentBuildHash,
+    nightlyTag: String? = currentNightlyTag,
+    isNightly: Boolean = isCanaryBuild,
+    versionCode: Long = BuildConfig.VERSION_CODE.toLong(),
+): String =
+    if (isNightly) {
+        val core = "$versionName.$versionCode" + (buildHash?.take(9)?.let { "-$it" } ?: "")
+        nightlyTag?.let { "$core ($it)" } ?: core
+    } else {
+        versionName
+    }
+
 internal fun formatVersionName(
     versionName: String = BuildConfig.VERSION_NAME,
     buildHash: String? = currentBuildHash,

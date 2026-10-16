@@ -411,7 +411,6 @@ fun LocalSongScreen(
                                 .padding(top = 8.dp, bottom = 4.dp),
                     ) {}
                 } else {
-
                     val compactFraction = LocalBottomUiCompactFraction.current
                     LargeFrostedTopAppBar(
                         titleRes = R.string.local_files,

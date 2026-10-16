@@ -107,7 +107,6 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.CustomThemeColorKey
-import moe.rukamori.archivetune.constants.DynamicThemeKey
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.svg.DynamicSVGImage
@@ -1061,11 +1060,6 @@ fun ThemeCreatorScreen(navController: NavController) {
             key = CustomThemeColorKey,
             defaultValue = ThemePalettes.Default.id,
         )
-    val (_, setDynamicThemeEnabled) =
-        rememberPreference(
-            key = DynamicThemeKey,
-            defaultValue = true,
-        )
 
     val seedFromPrefs =
         remember(customThemeValue) {
@@ -1096,7 +1090,6 @@ fun ThemeCreatorScreen(navController: NavController) {
     var importErrorText by rememberSaveable { mutableStateOf("") }
 
     fun applyThemeToPrefs() {
-        setDynamicThemeEnabled(false)
         setCustomThemeValue(ThemeSeedPaletteCodec.encodeForPreference(currentPalette, themeName.takeIf { it.isNotBlank() }))
         Toast.makeText(context, context.getString(R.string.theme_applied), Toast.LENGTH_SHORT).show()
     }
@@ -1140,8 +1133,7 @@ fun ThemeCreatorScreen(navController: NavController) {
                 val importedPalette = ThemeSeedPaletteCodec.decodeFromJson(text)
                 if (importedPalette != null) {
                     val name = ThemeSeedPaletteCodec.extractNameFromJsonOrNull(text)
-                    setDynamicThemeEnabled(false)
-                    setCustomThemeValue(ThemeSeedPaletteCodec.encodeForPreference(importedPalette, name))
+                                setCustomThemeValue(ThemeSeedPaletteCodec.encodeForPreference(importedPalette, name))
                     Toast.makeText(context, context.getString(R.string.theme_import_success), Toast.LENGTH_SHORT).show()
                 } else {
                     importErrorText = text.take(1200)

@@ -545,17 +545,20 @@ jobs:
           cat > release_notes.md <<EOF
           # ArchiveTune ${VERSION}
 
-          The audiophile update: the Tryptify and LastWave engine pair arrives in
-          full, bit-perfect playback stops resampling for good, automix becomes a
-          native clean-room engine that starts each blend when the song itself
-          starts getting quiet, Listen Together is rebuilt from the vivi-music
-          reference with a complete chat suite, settings turns into grouped glass
-          cards with a liquid-glass tuning page, and search grows the compact
-          search circle beside the mini player.
+          The everywhere update: three new streaming sources arrive (SoundCloud,
+          experimental Spotify direct, Deezer anonymous), the Apple Music player
+          style is replaced by the full Flamingo port, the BitChord design family
+          takes over the navigation bar, home feed and search, the Acoustic
+          Quality Audit (Spek spectrogram) verifies that your lossless files
+          really are lossless, Listen Together grows a self-hostable server and a
+          complete chat suite, Telegram channels and bots become a first-class
+          source, backups sync to any cloud provider, on-device smart
+          recommendations learn what you play, and the app is fully localized —
+          twelve languages at one hundred percent and eleven brand-new ones.
 
           **Full changelog:** https://github.com/${{ github.repository }}/blob/${TAG}/changelogs.md
 
-          **All changes since v16.0:** https://github.com/${{ github.repository }}/compare/v16.0...${TAG}
+          **All changes since v17.0:** https://github.com/${{ github.repository }}/compare/v17.0...${TAG}
           EOF
 
           gh release create "$TAG" \
