@@ -115,16 +115,6 @@ val HomeShelfCardSpacing = 14.dp
 
 val HomeShelfBottomSpacing = 26.dp
 
-private const val HomeHeroCardFraction = 0.70f
-
-private val HomeHeroCardMaxWidth = 320.dp
-
-const val HomeHeroCardRatio = 0.92f
-
-val HomeHeroCardCorner = 18.dp
-
-fun homeHeroCardWidth(available: Dp): Dp = minOf(available * HomeHeroCardFraction, HomeHeroCardMaxWidth)
-
 fun Modifier.homeFeedThumbnailBorder(shape: Shape): Modifier =
     composed {
         val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
@@ -192,20 +182,20 @@ private fun HomeSkeletonLine(fraction: Float, height: Dp, modifier: Modifier = M
 
 @Composable
 private fun HomeSectionHeaderSkeleton(index: Int = 0) {
-    Column(Modifier.padding(horizontal = HomeFeedGutter, vertical = 10.dp)) {
+    Column(Modifier.padding(horizontal = BitChordPageGutter, vertical = 10.dp)) {
         HomeSkeletonLine(fraction = HomeTitleWidths[index % HomeTitleWidths.size] * 0.7f, height = 18.dp)
     }
 }
 
 @Composable
 private fun HomeHeroShelfSkeleton() {
-    Column(Modifier.padding(bottom = HomeShelfBottomSpacing)) {
+    Column(Modifier.padding(bottom = BitChordShelfBottomSpacing)) {
         HomeSectionHeaderSkeleton()
         BoxWithConstraints {
-            val cardWidth = homeHeroCardWidth(maxWidth)
+            val cardWidth = bitChordHeroCardWidth(maxWidth)
             LazyRow(
-                contentPadding = PaddingValues(horizontal = HomeFeedGutter),
-                horizontalArrangement = Arrangement.spacedBy(HomeShelfCardSpacing),
+                contentPadding = PaddingValues(horizontal = BitChordPageGutter),
+                horizontalArrangement = Arrangement.spacedBy(BitChordShelfCardSpacing),
                 userScrollEnabled = false,
             ) {
                 items(2) {
@@ -213,8 +203,8 @@ private fun HomeHeroShelfSkeleton() {
                         modifier =
                             Modifier
                                 .width(cardWidth)
-                                .aspectRatio(HomeHeroCardRatio),
-                        shape = RoundedCornerShape(HomeHeroCardCorner),
+                                .aspectRatio(BitChordHeroCardRatio),
+                        shape = RoundedCornerShape(BitChordHeroCardCorner),
                     )
                 }
             }
@@ -224,21 +214,21 @@ private fun HomeHeroShelfSkeleton() {
 
 @Composable
 fun HomeShelfSkeleton(index: Int = 0) {
-    Column(Modifier.padding(bottom = HomeShelfBottomSpacing)) {
+    Column(Modifier.padding(bottom = BitChordShelfBottomSpacing)) {
         HomeSectionHeaderSkeleton(index = index)
         LazyRow(
-            contentPadding = PaddingValues(horizontal = HomeFeedGutter),
-            horizontalArrangement = Arrangement.spacedBy(HomeShelfCardSpacing),
+            contentPadding = PaddingValues(horizontal = BitChordPageGutter),
+            horizontalArrangement = Arrangement.spacedBy(BitChordShelfCardSpacing),
             userScrollEnabled = false,
         ) {
             items(3) { card ->
-                Column(Modifier.width(HomeShelfCardWidth)) {
+                Column(Modifier.width(BitChordShelfCardWidth)) {
                     HomeShimmerBox(
                         modifier =
                             Modifier
-                                .width(HomeShelfCardWidth)
+                                .width(BitChordShelfCardWidth)
                                 .aspectRatio(1f),
-                        shape = RoundedCornerShape(HomeShelfCardCorner),
+                        shape = RoundedCornerShape(BitChordShelfCardCorner),
                     )
                     Spacer(Modifier.height(10.dp))
                     HomeSkeletonLine(
@@ -394,87 +384,6 @@ fun HomeFeedShelfCard(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun HomeFeedHeroCard(
-    thumbnailUrl: String?,
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    onLongClick: (() -> Unit)? = null,
-    isActive: Boolean = false,
-    isPlaying: Boolean = false,
-) {
-    Box(
-        modifier =
-            modifier
-                .aspectRatio(HomeHeroCardRatio)
-                .clip(RoundedCornerShape(HomeHeroCardCorner))
-                .homeFeedThumbnailBorder(RoundedCornerShape(HomeHeroCardCorner))
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .let { m ->
-                    if (onLongClick != null) {
-                        m.combinedClickable(onClick = onClick, onLongClick = onLongClick)
-                    } else {
-                        m.combinedClickable(onClick = onClick)
-                    }
-                },
-    ) {
-        AsyncImage(
-            model = thumbnailUrl,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
-        )
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.BottomStart)
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.78f)),
-                        ),
-                    )
-                    .padding(start = 16.dp, end = 16.dp, top = 34.dp, bottom = 14.dp),
-        ) {
-            Text(
-                text = title,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.W700,
-                letterSpacing = (-0.3).sp,
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (subtitle.isNotBlank()) {
-                Text(
-                    text = subtitle,
-                    fontSize = 14.sp,
-                    color = Color.White.copy(alpha = 0.72f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-
-        if (isActive) {
-            Box(
-                modifier =
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(10.dp)
-                        .size(10.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (isPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                        ),
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
 fun HomeFeedSongCard(
     song: Song,
     mediaMetadata: MediaMetadata?,
@@ -512,168 +421,6 @@ fun HomeFeedSongCard(
         },
         modifier = modifier,
     )
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun HomeFeedYTItemCard(
-    item: YTItem,
-    mediaMetadata: MediaMetadata?,
-    navController: NavController,
-    menuState: MenuState,
-    haptic: HapticFeedback,
-    scope: CoroutineScope,
-    onPlaySongFromSection: (String) -> Unit = {},
-    onPlayEpisode: (EpisodeItem) -> Unit = {},
-    modifier: Modifier = Modifier,
-    isPlaying: Boolean = false,
-) {
-    val subtitle =
-        when (item) {
-            is SongItem -> item.artists.joinToString { it.name }
-            is AlbumItem -> item.artists?.joinToString { it.name } ?: item.year?.toString().orEmpty()
-            is ArtistItem -> item.subscriberCountText.orEmpty()
-            is PlaylistItem -> item.songCountText.orEmpty()
-            is PodcastItem -> item.author?.name.orEmpty()
-            is EpisodeItem -> listOfNotNull(item.podcast?.name, item.dateText, item.durationText).joinToString(" • ")
-        }
-
-    val (cropThumbnailToSquare, _) = rememberPreference(CropThumbnailToSquareKey, false)
-    val resolvedThumbnailRatio = item.preferredThumbnailRatio(cropThumbnailToSquare)
-    val longClickHandler: (() -> Unit)? =
-        if (item is PodcastItem || item is EpisodeItem) {
-            null
-        } else {
-            {
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                menuState.show {
-                    when (item) {
-                        is SongItem ->
-                            YouTubeSongMenu(
-                                song = item,
-                                navController = navController,
-                                onDismiss = menuState::dismiss,
-                            )
-
-                        is AlbumItem ->
-                            YouTubeAlbumMenu(
-                                albumItem = item,
-                                navController = navController,
-                                onDismiss = menuState::dismiss,
-                            )
-
-                        is ArtistItem ->
-                            YouTubeArtistMenu(
-                                artist = item,
-                                onDismiss = menuState::dismiss,
-                            )
-
-                        is PlaylistItem ->
-                            YouTubePlaylistMenu(
-                                playlist = item,
-                                coroutineScope = scope,
-                                onDismiss = menuState::dismiss,
-                            )
-
-                        is PodcastItem, is EpisodeItem -> Unit
-                    }
-                }
-            }
-        }
-    HomeFeedShelfCard(
-        thumbnailUrl = item.thumbnail,
-        title = item.title,
-        subtitle = subtitle,
-        isCircular = item is ArtistItem,
-        isActive = item.id in listOf(mediaMetadata?.album?.id, mediaMetadata?.id),
-        isPlaying = isPlaying,
-        thumbnailAspectRatio = if (item is ArtistItem) 1f else resolvedThumbnailRatio,
-        onClick = {
-            when (item) {
-                is SongItem -> onPlaySongFromSection(item.id)
-                is AlbumItem -> navController.navigate("album/${item.id}")
-                is ArtistItem -> navController.navigate("artist/${item.id}")
-                is PlaylistItem -> navController.navigate("online_playlist/${item.id}")
-                is PodcastItem -> navController.navigate("podcast/${android.net.Uri.encode(item.browseId)}")
-                is EpisodeItem -> onPlayEpisode(item)
-            }
-        },
-        onLongClick = longClickHandler,
-        modifier = modifier,
-    )
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun HomeFeedLocalItemCard(
-    item: LocalItem,
-    mediaMetadata: MediaMetadata?,
-    isPlaying: Boolean,
-    navController: NavController,
-    playerConnection: PlayerConnection?,
-    menuState: MenuState,
-    haptic: HapticFeedback,
-    scope: CoroutineScope,
-    onPlaySongFromSection: (String) -> Unit = {},
-    modifier: Modifier = Modifier,
-) {
-    when (item) {
-        is Song ->
-            HomeFeedSongCard(
-                song = item,
-                mediaMetadata = mediaMetadata,
-                isPlaying = isPlaying,
-                navController = navController,
-                playerConnection = playerConnection,
-                menuState = menuState,
-                haptic = haptic,
-                onPlayFromSection = { onPlaySongFromSection(item.id) },
-                modifier = modifier,
-            )
-
-        is Album ->
-            HomeFeedShelfCard(
-                thumbnailUrl = item.album.thumbnailUrl,
-                title = item.album.title,
-                subtitle = item.artists.joinToString { it.name },
-                isActive = item.id == mediaMetadata?.album?.id,
-                isPlaying = isPlaying,
-                onClick = { navController.navigate("album/${item.id}") },
-                onLongClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    menuState.show {
-                        AlbumMenu(
-                            originalAlbum = item,
-                            navController = navController,
-                            onDismiss = menuState::dismiss,
-                        )
-                    }
-                },
-                modifier = modifier,
-            )
-
-        is Artist ->
-            HomeFeedShelfCard(
-                thumbnailUrl = item.artist.thumbnailUrl,
-                title = item.artist.name,
-                subtitle = "",
-                isCircular = true,
-                onClick = { navController.navigate("artist/${item.id}") },
-                onLongClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    menuState.show {
-                        ArtistMenu(
-                            originalArtist = item,
-                            coroutineScope = scope,
-                            onDismiss = menuState::dismiss,
-                        )
-                    }
-                },
-                modifier = modifier,
-            )
-
-        is Playlist -> Unit
-    }
 }
 
 private val HomeRefreshLineHeight = 2.5.dp

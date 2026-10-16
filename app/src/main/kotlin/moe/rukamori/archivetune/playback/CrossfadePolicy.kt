@@ -22,6 +22,11 @@ object CrossfadePolicy {
         return sin(clamped.toDouble() * (PI / 2.0)).toFloat()
     }
 
+    fun gentleIncomingGain(progress: Float): Float {
+        val base = incomingGain(progress)
+        return base * base
+    }
+
     fun outgoingVolume(
         progress: Float,
         baseVolume: Float,
@@ -33,6 +38,12 @@ object CrossfadePolicy {
         baseVolume: Float,
         maxGain: Float,
     ): Float = (baseVolume * incomingGain(progress)).coerceIn(0f, maxGain)
+
+    fun gentleIncomingVolume(
+        progress: Float,
+        baseVolume: Float,
+        maxGain: Float,
+    ): Float = (baseVolume * gentleIncomingGain(progress)).coerceIn(0f, maxGain)
 
     fun resolveTargetIndex(
         repeatOne: Boolean,

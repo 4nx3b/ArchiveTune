@@ -9,9 +9,8 @@
 
 package moe.rukamori.archivetune.ui.screens.search
 
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
@@ -21,8 +20,6 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -41,7 +38,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -56,7 +52,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -83,7 +78,6 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import com.kyant.backdrop.Backdrop
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.HideSearchChromeWhileScrollingKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.ui.component.IconButton as AppIconButton
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
@@ -149,7 +143,6 @@ fun BoxScope.SearchResultsBottomOverlay(
     onBackLongClick: () -> Unit = {},
     placeholder: String = "",
     bottomPadding: Dp = 0.dp,
-    lazyListState: LazyListState? = null,
     trailing: (@Composable RowScope.() -> Unit)? = null,
     chipsRow: (@Composable () -> Unit)? = null,
     activationTick: Int = 0,
@@ -162,32 +155,6 @@ fun BoxScope.SearchResultsBottomOverlay(
             runCatching { activationFocusRequester.requestFocus() }
         }
     }
-    var lastObservedItemIndex by remember { mutableIntStateOf(0) }
-    var lastObservedScrollOffset by remember { mutableIntStateOf(0) }
-
-    val hideWhileScrolling by rememberPreference(HideSearchChromeWhileScrollingKey, defaultValue = false)
-    var hiddenByScrollDirection by remember { mutableStateOf(false) }
-    if (lazyListState != null) {
-        LaunchedEffect(lazyListState) {
-            snapshotFlow { lazyListState.firstVisibleItemIndex to lazyListState.firstVisibleItemScrollOffset }
-                .collect { (_, offset) ->
-
-                    val goingDown = offset > lastObservedScrollOffset || lazyListState.firstVisibleItemIndex > lastObservedItemIndex
-                    if (goingDown && lazyListState.canScrollBackward) {
-                        hiddenByScrollDirection = true
-                    } else if (!goingDown) {
-                        hiddenByScrollDirection = false
-                    }
-                    lastObservedItemIndex = lazyListState.firstVisibleItemIndex
-                    lastObservedScrollOffset = offset
-                }
-        }
-    }
-    val chromeHidden =
-        hideWhileScrolling &&
-            lazyListState != null &&
-            hiddenByScrollDirection &&
-            lazyListState.canScrollBackward
 
     val density = LocalDensity.current
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
@@ -210,24 +177,19 @@ fun BoxScope.SearchResultsBottomOverlay(
                 }
                 .padding(start = 12.dp, end = 12.dp, bottom = effectiveBottomPadding),
     ) {
-        AnimatedVisibility(
-            visible = !chromeHidden,
-            enter = fadeIn(tween(200)) + slideInVertically(tween(240)) { it / 2 },
-            exit = fadeOut(tween(140)) + slideOutVertically(tween(200)) { it / 2 },
-        ) {
-            Column {
-                if (chipsRow != null) {
-                    AnimatedVisibility(
-                        visible = !fieldFocused,
-                        enter = fadeIn(tween(160)) + expandVerticallySoft(),
-                        exit = fadeOut(tween(120)) + shrinkVerticallySoft(),
-                    ) {
-                        Column {
-                            chipsRow()
-                            Spacer(Modifier.height(10.dp))
-                        }
+        Column {
+            if (chipsRow != null) {
+                AnimatedVisibility(
+                    visible = !fieldFocused,
+                    enter = fadeIn(tween(160)) + expandVerticallySoft(),
+                    exit = fadeOut(tween(120)) + shrinkVerticallySoft(),
+                ) {
+                    Column {
+                        chipsRow()
+                        Spacer(Modifier.height(10.dp))
                     }
                 }
+            }
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -256,7 +218,6 @@ fun BoxScope.SearchResultsBottomOverlay(
                     )
                 }
             }
-        }
     }
 }
 
@@ -411,108 +372,6 @@ private fun SearchInputPill(
 }
 
 @Composable
-fun <E> GlassFilterChipsRow(
-    state: SearchResultsBarState,
-    chips: List<Pair<E, String>>,
-    currentValue: E,
-    onValueUpdate: (E) -> Unit,
-    icons: Map<E, Int> = emptyMap(),
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-    ) {
-        Spacer(Modifier.width(2.dp))
-        chips.forEach { (value, label) ->
-            GlassFilterChip(
-                state = state,
-                label = label,
-                iconRes = icons[value],
-                selected = currentValue == value,
-                onClick = { onValueUpdate(value) },
-            )
-            Spacer(Modifier.width(8.dp))
-        }
-    }
-}
-
-@Composable
-private fun GlassFilterChip(
-    state: SearchResultsBarState,
-    label: String,
-    iconRes: Int?,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val backdrop = state.backdrop
-    val shape = RoundedCornerShape(20.dp)
-
-    val container =
-        if (backdrop != null) {
-            Modifier.liquidGlass(
-                backdrop = backdrop,
-                shape = shape,
-                interactive = true,
-                baseColor =
-                    if (selected) {
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.32f)
-                    } else {
-                        Color.Unspecified
-                    },
-            )
-        } else {
-            Modifier.background(
-                color =
-                    if (selected) {
-                        MaterialTheme.colorScheme.primaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.surfaceContainerLow
-                    },
-                shape = shape,
-            )
-        }
-
-    val contentColor =
-        if (selected) {
-            MaterialTheme.colorScheme.primary
-        } else if (backdrop != null) {
-            liquidGlassContentColor()
-        } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
-        }
-
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
-        modifier =
-            Modifier
-                .padding(vertical = 2.dp)
-                .then(container)
-                .clickable(onClick = onClick)
-                .padding(start = 14.dp, end = 18.dp, top = 10.dp, bottom = 10.dp)
-                .height(22.dp),
-    ) {
-        if (iconRes != null) {
-            Icon(
-                painter = painterResource(iconRes),
-                contentDescription = null,
-                tint = contentColor,
-                modifier = Modifier.size(18.dp),
-            )
-        }
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            color = contentColor,
-            maxLines = 1,
-        )
-    }
-}
-
-@Composable
 fun SearchResultsSortMenu(
     selectedSort: OnlineSearchSort,
     onSortSelected: (OnlineSearchSort) -> Unit,
@@ -574,7 +433,6 @@ fun SearchResultsTopHeader(
     chipsRow: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-
     Column(
         modifier =
             modifier

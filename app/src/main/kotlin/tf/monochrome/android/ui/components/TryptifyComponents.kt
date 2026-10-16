@@ -118,7 +118,6 @@ fun Modifier.liquidGlass(
     this
         .clip(shape)
         .drawBehind {
-
             drawRect(tint)
             drawRect(
                 color = rim,

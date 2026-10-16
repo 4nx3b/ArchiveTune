@@ -22,7 +22,6 @@ import androidx.media3.common.Format
 import java.util.concurrent.atomic.AtomicBoolean
 
 object BitPerfectRuntime {
-
     private const val DIRECT_PLAYBACK_SUPPORTED_BIT = 1 shl 0
 
     @Volatile
@@ -59,6 +58,18 @@ object BitPerfectRuntime {
 
     @Volatile
     private var hasLatchedInput: Boolean = false
+
+    @Volatile
+    private var decodedRateLatched: Boolean = false
+
+    @Volatile
+    private var usbRouteActive: Boolean = false
+
+    @Volatile
+    private var mixerRouteActive: Boolean = false
+
+    @Volatile
+    private var mixerWireRate: Int = 0
 
     var status by mutableStateOf(Status.idle())
         private set
@@ -114,6 +125,7 @@ object BitPerfectRuntime {
         lastUsbExclusive = usbExclusive
         lastEffectiveVolume = effectiveVolume
         hasLatchedInput = true
+        if (inputSampleRate > 0) decodedRateLatched = true
 
         var direct = false
         var nativeRateMatched = false
@@ -125,7 +137,6 @@ object BitPerfectRuntime {
         if (!requested) {
             failure = null
         } else if (usbExclusive) {
-
             direct = true
             usbRouteVerified = latchedUsbRateHz > 0 &&
                 latchedUsbRateHz == inputSampleRate &&
@@ -162,7 +173,6 @@ object BitPerfectRuntime {
 
             nativeRateMatched = true
         } else {
-
             nativeRateMatched = true
         }
 
@@ -181,7 +191,7 @@ object BitPerfectRuntime {
         status = status.copy(
             sourceEncoding = if (seedSource) inputEncoding else status.sourceEncoding,
             sourceBitDepth = if (seedSource) bits else status.sourceBitDepth,
-            sourceSampleRate = if (seedSource) inputSampleRate else status.sourceSampleRate,
+            sourceSampleRate = if (inputSampleRate > 0) inputSampleRate else status.sourceSampleRate,
             sourceIsLossy = if (seedSource) false else status.sourceIsLossy,
             decodedEncoding = inputEncoding,
             decodedBitDepth = bits,
@@ -233,6 +243,9 @@ object BitPerfectRuntime {
         }
     }
 
+    val decodedRateIsAuthoritative: Boolean
+        get() = decodedRateLatched && status.sourceSampleRate > 0
+
     fun reportContainerFormat(
         inputEncoding: Int,
         inputSampleRate: Int,
@@ -243,7 +256,7 @@ object BitPerfectRuntime {
         status = status.copy(
             sourceEncoding = if (hasPcmDepth) inputEncoding else C.ENCODING_INVALID,
             sourceBitDepth = if (hasPcmDepth) bitDepthOf(inputEncoding) else 0,
-            sourceSampleRate = inputSampleRate,
+            sourceSampleRate = if (decodedRateLatched) status.sourceSampleRate else inputSampleRate,
             sourceIsLossy = !hasPcmDepth,
             channels = inputChannels.coerceIn(1, 2),
         )
@@ -253,8 +266,19 @@ object BitPerfectRuntime {
         bypassEngaged.set(false)
         latchedUsbRateHz = 0
         latchedUsbBits = 0
+        usbRouteActive = false
+        mixerRouteActive = false
+        mixerWireRate = 0
+        decodedRateLatched = false
         status = Status.idle()
     }
+
+    val wireSampleRateHz: Int
+        get() = when {
+            usbRouteActive -> latchedUsbRateHz
+            mixerRouteActive -> mixerWireRate
+            else -> 0
+        }
 
     fun notifyVolume(effectiveVolume: Float) {
         if (status.verifiedBitPerfect && (effectiveVolume == 1f) != !status.softwareVolumeActive) {
@@ -263,6 +287,8 @@ object BitPerfectRuntime {
     }
 
     fun notifyMixerBitPerfect(active: Boolean, outputRateHz: Int, bits: Int = 0) {
+        mixerRouteActive = active
+        mixerWireRate = if (active && outputRateHz > 0) outputRateHz else 0
         if (!active) {
             val wasMixerRoute = status.mixerBitPerfectActive
             status = status.copy(mixerBitPerfectActive = false)
@@ -278,7 +304,6 @@ object BitPerfectRuntime {
             outputBitDepth = if (bits > 0) bits else status.outputBitDepth,
         )
         if (requested || lastEnginesEngaged) {
-
             val canClaim = !status.usbExclusiveActive && !status.directPlaybackSupported
             val rateMatches = outputRateHz <= 0 || status.sourceSampleRate <= 0 ||
                 outputRateHz == status.sourceSampleRate
@@ -300,6 +325,7 @@ object BitPerfectRuntime {
         bits: Int,
         engineTransport: Boolean = false,
     ) {
+        usbRouteActive = active
         status = status.copy(usbExclusiveActive = active)
         if (active) {
             latchedUsbRateHz = rate

@@ -22,6 +22,7 @@ data class AiServiceConfig(
     val apiKey: String,
     val customEndpoint: String,
     val model: String,
+    val deepLFormality: String = "default",
 ) {
     val canCallApi: Boolean
         get() =

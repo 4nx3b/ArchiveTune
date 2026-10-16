@@ -58,6 +58,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.zIndex
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -85,6 +86,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -97,6 +99,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -166,6 +169,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalAnimationsDisabled
@@ -213,8 +218,13 @@ import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.component.BottomSheet
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.COLLAPSED_ANCHOR
+import moe.rukamori.archivetune.ui.component.DISMISSED_ANCHOR
+import moe.rukamori.archivetune.ui.component.EXPANDED_ANCHOR
 import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.ui.component.LocalMenuState
+import moe.rukamori.archivetune.ui.component.PlayerBackController
+import moe.rukamori.archivetune.ui.component.PlayerBackTarget
+import moe.rukamori.archivetune.ui.component.PredictiveSheetBackState
 import moe.rukamori.archivetune.ui.lottie.ArchiveTuneLottie
 import moe.rukamori.archivetune.ui.lottie.ArchiveTuneLottieAnimation
 import moe.rukamori.archivetune.ui.component.rememberBottomSheetState
@@ -234,6 +244,7 @@ import moe.rukamori.archivetune.ui.utils.resize
 import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.ui.player.bitchord.BitChordPlayerContent
+import moe.rukamori.archivetune.ui.player.flamingo.FlamingoPlayerContent
 import moe.rukamori.archivetune.ui.player.tiktok.TikTokPlayerContent
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberEnumPreference
@@ -369,6 +380,8 @@ fun BottomSheetPlayer(
     compactHorizontalPadding: Dp = 16.dp,
     compactReserveEndControl: Boolean = true,
     navbarHiddenOffset: (() -> Float)? = null,
+    backController: PlayerBackController? = null,
+    predictiveBackState: PredictiveSheetBackState? = null,
 ) {
     val context = LocalContext.current
     val menuState = LocalMenuState.current
@@ -551,12 +564,17 @@ fun BottomSheetPlayer(
 
     val spatialFlowMiniArtworkRect =
         rememberSaveable(stateSaver = SpatialFlowArtworkRectSaver) { mutableStateOf<Rect?>(null) }
+
     val spatialFlowFullArtworkRect =
         rememberSaveable(stateSaver = SpatialFlowArtworkRectSaver) { mutableStateOf<Rect?>(null) }
     var spatialFlowPagerArtworkActive by remember { mutableStateOf(true) }
 
     var spatialFlowLyricsOpen by remember { mutableStateOf(false) }
     var spatialFlowQueueOpen by remember { mutableStateOf(false) }
+    val stylePageBackRequests = remember { mutableIntStateOf(0) }
+    var simpmusicStylePageOpen by remember { mutableStateOf(false) }
+    var tiktokStylePageOpen by remember { mutableStateOf(false) }
+    var bitchordStylePageOpen by remember { mutableStateOf(false) }
     var duration by rememberSaveable(mediaMetadata?.id) {
         mutableLongStateOf(playerConnection.player.duration)
     }
@@ -757,7 +775,9 @@ fun BottomSheetPlayer(
     )
 
     val TextBackgroundColor =
-        if (playerDesignStyle == PlayerDesignStyle.V9) {
+        if (playerDesignStyle == PlayerDesignStyle.V10) {
+            dynamicV10AccentColor
+        } else if (playerDesignStyle == PlayerDesignStyle.V9) {
             dynamicTextColor
         } else if (playerDesignStyle == PlayerDesignStyle.V7) {
             Color.White
@@ -809,6 +829,8 @@ fun BottomSheetPlayer(
                 Pair(Color.White, Color.Black)
             } else if (playerDesignStyle == PlayerDesignStyle.V9) {
                 Pair(dynamicAccentColor, dynamicIconButtonColor)
+            } else if (playerDesignStyle == PlayerDesignStyle.V10) {
+                Pair(dynamicV10FieldColor, dynamicV10AccentColor)
             } else {
                 Pair(tb, ib)
             }
@@ -914,10 +936,6 @@ fun BottomSheetPlayer(
         )
     }
 
-    var showChoosePlaylistDialog by rememberSaveable {
-        mutableStateOf(false)
-    }
-
     LaunchedEffect(mediaMetadata?.id, playbackState, aodModeEnabled) {
         val startTime = SystemClock.elapsedRealtime()
         if (playbackState == STATE_READY) {
@@ -992,7 +1010,6 @@ fun BottomSheetPlayer(
     val dynamicQueuePeekHeight =
         if (
             playerDesignStyle == PlayerDesignStyle.V5 ||
-            playerDesignStyle == PlayerDesignStyle.V10 ||
             playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
             playerDesignStyle == PlayerDesignStyle.BITCHORD ||
             playerDesignStyle == PlayerDesignStyle.TIKTOK ||
@@ -1005,6 +1022,8 @@ fun BottomSheetPlayer(
             88.dp +
                 (if (showCodecOnPlayer) 24.dp else 0.dp) +
                 (if (sleepTimerEnabled) 42.dp else 0.dp)
+        } else if (playerDesignStyle == PlayerDesignStyle.V10) {
+            if (showCodecOnPlayer) 100.dp else 82.dp
         } else if (showCodecOnPlayer) {
             88.dp
         } else {
@@ -1082,17 +1101,58 @@ fun BottomSheetPlayer(
             }
         }
 
+    val anyStylePageOverlayOpen by remember {
+        derivedStateOf {
+            isAppleMusicInlineLyricsOpen ||
+                spatialFlowLyricsOpen ||
+                spatialFlowQueueOpen ||
+                simpmusicStylePageOpen ||
+                tiktokStylePageOpen ||
+                bitchordStylePageOpen
+        }
+    }
+
     if (!aodModeEnabled) {
         val rootOverlayActive = LocalRootOverlayActive.current
         BackHandler(
             enabled =
                 (queueSheetState.isExpandedOrExpanding ||
-                    state.isExpandedOrExpanding) && !rootOverlayActive,
+                    state.isExpandedOrExpanding ||
+                    bottomSheetPageState.isVisible) && !rootOverlayActive,
         ) {
             when {
+                bottomSheetPageState.isVisible -> bottomSheetPageState.dismiss()
                 isInlineLyricsOpen && state.isExpandedOrExpanding -> isInlineLyricsOpen = false
+                anyStylePageOverlayOpen && state.isExpandedOrExpanding -> stylePageBackRequests.intValue++
                 queueSheetState.isExpandedOrExpanding -> queueSheetState.collapseSoft()
                 state.isExpandedOrExpanding -> state.collapseSoft()
+            }
+        }
+    }
+
+    if (backController != null) {
+        val backRootOverlayActive = LocalRootOverlayActive.current
+        val detailsPageVisible = bottomSheetPageState.isVisible
+        val publishedBackTarget =
+            when {
+                backRootOverlayActive -> PlayerBackTarget.NONE
+                aodModeEnabled -> PlayerBackTarget.NONE
+                !state.isExpandedOrExpanding && !queueSheetState.isExpandedOrExpanding -> PlayerBackTarget.NONE
+                queueSheetState.isExpandedOrExpanding -> PlayerBackTarget.SUB_PAGE
+                detailsPageVisible -> PlayerBackTarget.SUB_PAGE
+                isInlineLyricsOpen || isAppleMusicInlineLyricsOpen || anyStylePageOverlayOpen -> PlayerBackTarget.SUB_PAGE
+                else -> PlayerBackTarget.SHEET
+            }
+        SideEffect {
+            backController.backTarget = publishedBackTarget
+            backController.routeBack = {
+                when {
+                    detailsPageVisible && bottomSheetPageState.isVisible -> bottomSheetPageState.dismiss()
+                    isInlineLyricsOpen && state.isExpandedOrExpanding -> isInlineLyricsOpen = false
+                    anyStylePageOverlayOpen && state.isExpandedOrExpanding -> stylePageBackRequests.intValue++
+                    queueSheetState.isExpandedOrExpanding -> queueSheetState.collapseSoft()
+                    state.isExpandedOrExpanding -> state.collapseSoft()
+                }
             }
         }
     }
@@ -1127,6 +1187,10 @@ fun BottomSheetPlayer(
         videoPlaybackFailed = false
     }
 
+    val videoSheetSurfaceActive by remember(state) {
+        derivedStateOf { state.progress > 0.5f || state.isExpandedOrExpanding }
+    }
+
     val videoState =
         rememberVideoArtworkStateOrNull(
             videoId = videoMediaId,
@@ -1153,6 +1217,8 @@ fun BottomSheetPlayer(
             isMainAudioBuffering = playbackState == STATE_BUFFERING,
 
             mainAudioReady = playbackState == STATE_READY,
+
+            sheetSurfaceActive = videoSheetSurfaceActive,
         )
 
     CompositionLocalProvider(
@@ -1165,7 +1231,6 @@ fun BottomSheetPlayer(
     ) {
     Box(modifier = Modifier.fillMaxSize()) {
     val playerSheetCanvasVisible by remember(state) {
-
         derivedStateOf { state.progress > 0.5f || state.isExpandedOrExpanding }
     }
     CompositionLocalProvider(LocalPlayerSheetVisible provides playerSheetCanvasVisible) {
@@ -1315,10 +1380,11 @@ fun BottomSheetPlayer(
         onDismiss = {
             playerConnection.service.stopAndClearPlayback(clearPersistentState = true)
         },
-        backHandlerEnabled = !aodModeEnabled && !isInlineLyricsOpen,
+        backHandlerEnabled = !aodModeEnabled && !isInlineLyricsOpen && !anyStylePageOverlayOpen,
         keepContentAlive = true,
         morphMode = playerDesignStyle == PlayerDesignStyle.SPATIALFLOW,
         navbarHiddenOffset = navbarHiddenOffset,
+        predictiveBackState = predictiveBackState,
         sharedLayer =
             if (playerDesignStyle == PlayerDesignStyle.SPATIALFLOW) {
                 {
@@ -1458,6 +1524,30 @@ fun BottomSheetPlayer(
                         trySpotifyCanvas = spotifyCanvasEnabled,
                         spotifyTrackId = next.spotifyTrackId,
                     )
+                }
+            }
+        }
+
+        LaunchedEffect(queueWindows, currentWindowIndex, lowDataModeActive) {
+            if (lowDataModeActive) return@LaunchedEffect
+            val upcoming = queueWindows.drop(currentWindowIndex + 1).take(3)
+            if (upcoming.isEmpty()) return@LaunchedEffect
+            val loader = context.imageLoader
+            for (window in upcoming) {
+                val url = window.mediaItem.metadata?.thumbnailUrl?.trim()?.takeIf(String::isNotBlank) ?: continue
+                val hiRes = url.highRes()
+                val candidates = if (hiRes == url) listOf(url) else listOf(url, hiRes)
+                for (candidate in candidates) {
+                    val request =
+                        ImageRequest
+                            .Builder(context)
+                            .data(candidate)
+                            .memoryCacheKey(candidate)
+                            .diskCacheKey(candidate)
+                            .diskCachePolicy(CachePolicy.ENABLED)
+                            .networkCachePolicy(CachePolicy.ENABLED)
+                            .build()
+                    runCatching { loader.enqueue(request) }
                 }
             }
         }
@@ -1642,6 +1732,8 @@ fun BottomSheetPlayer(
                             currentFormat = currentFormat,
                             canvasPrimaryUrl = artworkCanvas?.animated,
                             canvasFallbackUrl = artworkCanvas?.videoUrl,
+                            externalBackRequests = stylePageBackRequests,
+                            onStylePageOpenChange = { bitchordStylePageOpen = it },
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -1669,6 +1761,8 @@ fun BottomSheetPlayer(
 
                             canvasPrimaryUrl = v7CanvasArtwork?.animatedVertical,
                             canvasFallbackUrl = v7CanvasArtwork?.videoUrlVertical,
+                            externalBackRequests = stylePageBackRequests,
+                            onStylePageOpenChange = { tiktokStylePageOpen = it },
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -1737,7 +1831,7 @@ fun BottomSheetPlayer(
                                     onToggleLike = playerConnection::toggleLike,
                                     onExpandQueue = openQueue,
                                     onMenuClick = {
-                                        menuState.show {
+                                        menuState.showImmersive {
                                             PlayerMenu(
                                                 mediaMetadata = metadata,
                                                 navController = navController,
@@ -1904,8 +1998,6 @@ fun BottomSheetPlayer(
                             playbackState = playbackState,
                             isPlaying = isPlaying,
                             isLoading = isLoading,
-                            canSkipPrevious = canSkipPrevious,
-                            canSkipNext = canSkipNext,
                             sliderPosition = sliderPosition,
                             position = position,
                             duration = duration,
@@ -1914,9 +2006,7 @@ fun BottomSheetPlayer(
                             state = state,
                             textBackgroundColor = dynamicV10AccentColor,
                             textButtonColor = dynamicV10FieldColor,
-                            iconButtonColor = iconButtonColor,
                             onCollapseClick = { state.collapseSoft() },
-                            onQueueClick = openQueue,
                             onLyricsClick = { isInlineLyricsOpen = !isInlineLyricsOpen },
                             lyricsOpen = isInlineLyricsOpen,
                             onCloseLyrics = { isInlineLyricsOpen = false },
@@ -1934,7 +2024,7 @@ fun BottomSheetPlayer(
                             sleepTimerEnabled = sleepTimerTimeLeft > 0L,
                             sleepTimerTimeLeft = sleepTimerTimeLeft,
                             onMenuClick = {
-                                menuState.show {
+                                menuState.showImmersive {
                                     PlayerMenu(
                                         mediaMetadata = metadata,
                                         navController = navController,
@@ -1948,15 +2038,6 @@ fun BottomSheetPlayer(
                                     )
                                 }
                             },
-                            onAddToPlaylistClick = {
-                                showChoosePlaylistDialog = true
-                            },
-                            currentFormat = currentFormat,
-                            onShowDetails = {
-                                bottomSheetPageState.show {
-                                    ShowMediaInfo(metadata.id)
-                                }
-                            },
                             landscape = true,
                             modifier =
                                 Modifier
@@ -1964,7 +2045,7 @@ fun BottomSheetPlayer(
                                     .padding(bottom = queueSheetState.collapsedBound)
                                     .windowInsetsPadding(
                                         WindowInsets(top = LocalStableSystemBarsTopPadding.current)
-                                            .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
+                                            .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
                                     ).nestedScroll(state.preUpPostDownNestedScrollConnection),
                         )
                     }
@@ -1976,7 +2057,6 @@ fun BottomSheetPlayer(
                             isLoading = isLoading,
                             canSkipPrevious = canSkipPrevious,
                             canSkipNext = canSkipNext,
-                            position = position,
                             duration = duration,
                             playerConnection = playerConnection,
                             navController = navController,
@@ -1984,7 +2064,7 @@ fun BottomSheetPlayer(
                             menuState = menuState,
                             bottomSheetPageState = bottomSheetPageState,
                             currentFormat = currentFormat,
-                            positionProvider = { position },
+                            positionProvider = positionProvider,
                             canvasPrimaryUrl = artworkCanvas?.animated,
                             canvasFallbackUrl = artworkCanvas?.videoUrl,
                             appIsDark = useDarkTheme,
@@ -2003,6 +2083,7 @@ fun BottomSheetPlayer(
                             onQueueExpandedChange = { expanded ->
                                 spatialFlowQueueOpen = expanded
                             },
+                            externalBackRequests = stylePageBackRequests,
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -2064,6 +2145,8 @@ fun BottomSheetPlayer(
                             currentFormat = currentFormat,
                             onSeek = onSliderValueChange,
                             onSeekFinished = onSliderValueChangeFinished,
+                            externalBackRequests = stylePageBackRequests,
+                            onStylePageOpenChange = { simpmusicStylePageOpen = it },
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -2075,7 +2158,7 @@ fun BottomSheetPlayer(
                     }
                 } else if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC) {
                     enrichedMetadata?.let { metadata ->
-                        AppleMusicPlayerContent(
+                        FlamingoPlayerContent(
                             mediaMetadata = metadata,
                             playbackState = playbackState,
                             isPlaying = isPlaying,
@@ -2101,6 +2184,7 @@ fun BottomSheetPlayer(
                             lyricsSyncOffset = lyricsSyncOffset,
                             onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
                             onLyricsVisibilityChange = { isAppleMusicInlineLyricsOpen = it },
+                            externalBackRequests = stylePageBackRequests,
                             landscape = true,
                             orientationRefreshEpoch = orientationRefreshEpoch,
                             modifier =
@@ -2133,7 +2217,7 @@ fun BottomSheetPlayer(
                                     isPlayerExpanded = state.isExpanded,
                                     onOverflowClick = {
                                         enrichedMetadata?.let { metadata ->
-                                            menuState.show {
+                                            menuState.showImmersive {
                                                 PlayerMenu(
                                                     mediaMetadata = metadata,
                                                     navController = navController,
@@ -2189,6 +2273,8 @@ fun BottomSheetPlayer(
                             currentFormat = currentFormat,
                             canvasPrimaryUrl = artworkCanvas?.animated,
                             canvasFallbackUrl = artworkCanvas?.videoUrl,
+                            externalBackRequests = stylePageBackRequests,
+                            onStylePageOpenChange = { bitchordStylePageOpen = it },
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -2216,6 +2302,8 @@ fun BottomSheetPlayer(
 
                             canvasPrimaryUrl = v7CanvasArtwork?.animatedVertical,
                             canvasFallbackUrl = v7CanvasArtwork?.videoUrlVertical,
+                            externalBackRequests = stylePageBackRequests,
+                            onStylePageOpenChange = { tiktokStylePageOpen = it },
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -2286,7 +2374,7 @@ fun BottomSheetPlayer(
                                         onToggleLike = playerConnection::toggleLike,
                                         onExpandQueue = openQueue,
                                         onMenuClick = {
-                                            menuState.show {
+                                            menuState.showImmersive {
                                                 PlayerMenu(
                                                     mediaMetadata = metadata,
                                                     navController = navController,
@@ -2451,8 +2539,6 @@ fun BottomSheetPlayer(
                             playbackState = playbackState,
                             isPlaying = isPlaying,
                             isLoading = isLoading,
-                            canSkipPrevious = canSkipPrevious,
-                            canSkipNext = canSkipNext,
                             sliderPosition = sliderPosition,
                             position = position,
                             duration = duration,
@@ -2461,9 +2547,7 @@ fun BottomSheetPlayer(
                             state = state,
                             textBackgroundColor = dynamicV10AccentColor,
                             textButtonColor = dynamicV10FieldColor,
-                            iconButtonColor = iconButtonColor,
                             onCollapseClick = { state.collapseSoft() },
-                            onQueueClick = openQueue,
                             onLyricsClick = { isInlineLyricsOpen = !isInlineLyricsOpen },
                             lyricsOpen = isInlineLyricsOpen,
                             onCloseLyrics = { isInlineLyricsOpen = false },
@@ -2481,7 +2565,7 @@ fun BottomSheetPlayer(
                             sleepTimerEnabled = sleepTimerTimeLeft > 0L,
                             sleepTimerTimeLeft = sleepTimerTimeLeft,
                             onMenuClick = {
-                                menuState.show {
+                                menuState.showImmersive {
                                     PlayerMenu(
                                         mediaMetadata = metadata,
                                         navController = navController,
@@ -2493,15 +2577,6 @@ fun BottomSheetPlayer(
                                         },
                                         onDismiss = menuState::dismiss,
                                     )
-                                }
-                            },
-                            onAddToPlaylistClick = {
-                                showChoosePlaylistDialog = true
-                            },
-                            currentFormat = currentFormat,
-                            onShowDetails = {
-                                bottomSheetPageState.show {
-                                    ShowMediaInfo(metadata.id)
                                 }
                             },
                             modifier =
@@ -2522,7 +2597,6 @@ fun BottomSheetPlayer(
                             isLoading = isLoading,
                             canSkipPrevious = canSkipPrevious,
                             canSkipNext = canSkipNext,
-                            position = position,
                             duration = duration,
                             playerConnection = playerConnection,
                             navController = navController,
@@ -2530,7 +2604,7 @@ fun BottomSheetPlayer(
                             menuState = menuState,
                             bottomSheetPageState = bottomSheetPageState,
                             currentFormat = currentFormat,
-                            positionProvider = { position },
+                            positionProvider = positionProvider,
                             canvasPrimaryUrl = artworkCanvas?.animated,
                             canvasFallbackUrl = artworkCanvas?.videoUrl,
                             appIsDark = useDarkTheme,
@@ -2549,6 +2623,7 @@ fun BottomSheetPlayer(
                             onQueueExpandedChange = { expanded ->
                                 spatialFlowQueueOpen = expanded
                             },
+                            externalBackRequests = stylePageBackRequests,
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -2610,6 +2685,8 @@ fun BottomSheetPlayer(
                             currentFormat = currentFormat,
                             onSeek = onSliderValueChange,
                             onSeekFinished = onSliderValueChangeFinished,
+                            externalBackRequests = stylePageBackRequests,
+                            onStylePageOpenChange = { simpmusicStylePageOpen = it },
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -2621,7 +2698,7 @@ fun BottomSheetPlayer(
                     }
                 } else if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC) {
                     enrichedMetadata?.let { metadata ->
-                        AppleMusicPlayerContent(
+                        FlamingoPlayerContent(
                             mediaMetadata = metadata,
                             playbackState = playbackState,
                             isPlaying = isPlaying,
@@ -2647,6 +2724,7 @@ fun BottomSheetPlayer(
                             lyricsSyncOffset = lyricsSyncOffset,
                             onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
                             onLyricsVisibilityChange = { isAppleMusicInlineLyricsOpen = it },
+                            externalBackRequests = stylePageBackRequests,
                             orientationRefreshEpoch = orientationRefreshEpoch,
 
                             modifier =
@@ -2685,7 +2763,7 @@ fun BottomSheetPlayer(
                                     isPlayerExpanded = state.isExpanded,
                                     onOverflowClick = {
                                         enrichedMetadata?.let { metadata ->
-                                            menuState.show {
+                                            menuState.showImmersive {
                                                 PlayerMenu(
                                                     mediaMetadata = metadata,
                                                     navController = navController,
@@ -2836,6 +2914,29 @@ fun BottomSheetPlayer(
                 videoFullscreenHolder.isFullscreen = true
             }
         }
+
+        val videoFullscreenByRotation = remember { mutableStateOf(false) }
+        val currentDeviceOrientation = LocalConfiguration.current.orientation
+        LaunchedEffect(currentDeviceOrientation, videoState) {
+            if (videoState == null) {
+                if (videoFullscreenByRotation.value) {
+                    videoFullscreenByRotation.value = false
+                    videoFullscreenHolder.isFullscreen = false
+                }
+                return@LaunchedEffect
+            }
+            if (currentDeviceOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) {
+                if (!videoFullscreenHolder.isFullscreen && !videoFullscreenByRotation.value) {
+                    videoFullscreenByRotation.value = true
+                    videoFullscreenHolder.isFullscreen = true
+                }
+            } else {
+                if (videoFullscreenByRotation.value) {
+                    videoFullscreenByRotation.value = false
+                    videoFullscreenHolder.isFullscreen = false
+                }
+            }
+        }
         videoState?.let { vs ->
             if (videoFullscreenHolder.isFullscreen) {
                 FullscreenVideoOverlay(
@@ -2844,7 +2945,11 @@ fun BottomSheetPlayer(
                     onPreferredHeightChange = { videoQualityStored = VideoQualityPreference.toStoredQuality(it) },
                     availableHeights = videoAvailableHeights,
                     selectedHeight = videoSelectedHeight,
-                    onDismiss = { videoFullscreenHolder.isFullscreen = false },
+                    onDismiss = {
+                        videoFullscreenByRotation.value = false
+                        videoFullscreenHolder.isFullscreen = false
+                    },
+                    followSensorOrientation = videoFullscreenByRotation.value,
                 )
             }
         }
@@ -2888,6 +2993,7 @@ fun BottomSheetPlayer(
                 }
             }
         }
+
     }
     }
     }

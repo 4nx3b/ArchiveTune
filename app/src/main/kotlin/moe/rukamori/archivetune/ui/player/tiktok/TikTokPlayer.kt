@@ -123,6 +123,8 @@ fun TikTokPlayerContent(
     canvasFallbackUrl: String? = null,
     onSeek: (Long) -> Unit = {},
     onSeekFinished: () -> Unit = {},
+    externalBackRequests: androidx.compose.runtime.MutableIntState? = null,
+    onStylePageOpenChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val player = playerConnection.player
@@ -270,11 +272,21 @@ fun TikTokPlayerContent(
 
     BackHandler(enabled = queueOpen) { queueOpen = false }
 
-    LaunchedEffect(state.isExpanded) {
-        if (!state.isExpanded) {
+    LaunchedEffect(state.isExpandedOrExpanding) {
+        if (!state.isExpandedOrExpanding) {
             if (immersive) immersive = false
             if (lyricsOpen) lyricsOpen = false
             if (queueOpen) queueOpen = false
+        }
+    }
+    val tiktokStylePageOpen = lyricsOpen || queueOpen || immersive
+    LaunchedEffect(tiktokStylePageOpen) { onStylePageOpenChange(tiktokStylePageOpen) }
+    val externalBackEpoch = externalBackRequests?.intValue ?: 0
+    LaunchedEffect(externalBackEpoch) {
+        if (externalBackEpoch > 0) {
+            if (lyricsOpen) lyricsOpen = false
+            if (queueOpen) queueOpen = false
+            if (immersive) immersive = false
         }
     }
     val onFullscreenAction =

@@ -30,6 +30,7 @@ import moe.rukamori.archivetune.storage.StorageFolderKind
 import moe.rukamori.archivetune.storage.StorageLocationRepository
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.get
+import moe.rukamori.archivetune.constants.MaxVideoCacheSizeKey
 import java.io.File
 import java.util.NavigableSet
 import java.util.TreeSet
@@ -44,11 +45,22 @@ annotation class PlayerCache
 @Retention(AnnotationRetention.BINARY)
 annotation class DownloadCache
 
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class VideoCache
+
 @dagger.hilt.EntryPoint
 @InstallIn(SingletonComponent::class)
 interface CanvasCacheEntryPoint {
     @PlayerCache
     fun playerCache(): Cache
+}
+
+@dagger.hilt.EntryPoint
+@InstallIn(SingletonComponent::class)
+interface VideoCacheEntryPoint {
+    @VideoCache
+    fun videoCache(): Cache
 }
 
 internal class LazyCache(
@@ -198,6 +210,27 @@ object AppModule {
             SimpleCache(
                 StorageLocationRepository.cacheDirectory(context, StorageFolderKind.DOWNLOADS),
                 NoOpCacheEvictor(),
+                databaseProvider,
+            )
+        }
+
+    @Singleton
+    @Provides
+    @VideoCache
+    fun provideVideoCache(
+        @ApplicationContext context: Context,
+        databaseProvider: DatabaseProvider,
+    ): Cache =
+        LazyCache {
+            val cacheSize = context.dataStore.get(MaxVideoCacheSizeKey, 512)
+            val evictor =
+                when (cacheSize) {
+                    -1 -> NoOpCacheEvictor()
+                    else -> LeastRecentlyUsedCacheEvictor(cacheSizeMegabytesToBytes(cacheSize))
+                }
+            SimpleCache(
+                StorageLocationRepository.cacheDirectory(context, StorageFolderKind.VIDEO_CACHE),
+                evictor,
                 databaseProvider,
             )
         }

@@ -51,13 +51,15 @@ fun SearchSourcePicker(
                             R.drawable.spotify_icon
                         } else if (currentProvider == SearchProvider.APPLE_MUSIC) {
                             R.drawable.apple_music_icon
+                        } else if (currentProvider == SearchProvider.SOUNDCLOUD) {
+                            R.drawable.solar_music_note_2_linear
                         } else {
-                            R.drawable.language
+                            R.drawable.youtube_icon
                         },
                     ),
                 contentDescription = stringResource(R.string.search_source_picker),
 
-                modifier = Modifier.size(22.dp),
+                modifier = Modifier.size(26.dp),
             )
         }
         DropdownMenu(
@@ -80,7 +82,7 @@ fun SearchSourcePicker(
             }
             SearchSourceMenuItem(
                 label = stringResource(R.string.search_source_youtube),
-                iconRes = R.drawable.language,
+                iconRes = R.drawable.youtube_icon,
                 selected = currentScope == SearchSource.ONLINE && currentProvider == SearchProvider.YOUTUBE,
             ) {
                 expanded = false
@@ -101,6 +103,14 @@ fun SearchSourcePicker(
             ) {
                 expanded = false
                 onSelection(SearchSource.ONLINE, SearchProvider.APPLE_MUSIC)
+            }
+            SearchSourceMenuItem(
+                label = stringResource(R.string.search_source_soundcloud),
+                iconRes = R.drawable.solar_music_note_2_linear,
+                selected = currentScope == SearchSource.ONLINE && currentProvider == SearchProvider.SOUNDCLOUD,
+            ) {
+                expanded = false
+                onSelection(SearchSource.ONLINE, SearchProvider.SOUNDCLOUD)
             }
         }
     }

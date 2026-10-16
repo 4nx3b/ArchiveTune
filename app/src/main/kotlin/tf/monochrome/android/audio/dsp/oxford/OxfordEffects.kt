@@ -210,7 +210,6 @@ class InflatorEffect @Inject constructor() {
     }
 
     fun processArrays(l: FloatArray, r: FloatArray, frames: Int) {
-
         if (!_state.value.effectIn) return
         val h = handle.get()
         if (h != 0L) InflatorNative.nativeProcessArrays(h, l, r, frames)

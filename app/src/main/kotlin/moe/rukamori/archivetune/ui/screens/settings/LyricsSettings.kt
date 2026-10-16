@@ -35,6 +35,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -97,6 +98,9 @@ import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
 import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import dev.chrisbanes.haze.hazeSource
+import moe.rukamori.archivetune.constants.EnhancedLyricsStyle
+import moe.rukamori.archivetune.constants.EnhancedLyricsStyleKey
+import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.ContentSettingsViewModel
 import sh.calvin.reorderable.ReorderableItem
@@ -120,6 +124,8 @@ fun LyricsSettings(
         rememberPreference(AutoHideLyricsPlayerControlsKey, defaultValue = true)
     val (lyricsTextSize, onLyricsTextSizeChange) = rememberPreference(LyricsTextSizeKey, defaultValue = 26f)
     val (lyricsLineSpacing, onLyricsLineSpacingChange) = rememberPreference(LyricsLineSpacingKey, defaultValue = 1.3f)
+    val (enhancedLyricsStyle, onEnhancedLyricsStyleChange) =
+        rememberEnumPreference(EnhancedLyricsStyleKey, defaultValue = EnhancedLyricsStyle.ACCOMPANIST)
 
     val (enableLrclib, onEnableLrclibChange) = rememberPreference(key = EnableLrcLibKey, defaultValue = true)
     val (enableKugou, onEnableKugouChange) = rememberPreference(key = EnableKugouKey, defaultValue = true)
@@ -198,6 +204,72 @@ fun LyricsSettings(
             .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
     ) {
         var showLyricsTextSizeDialog by rememberSaveable { mutableStateOf(false) }
+        var showLyricsAnimationStyleDialog by rememberSaveable { mutableStateOf(false) }
+
+        if (showLyricsAnimationStyleDialog) {
+            DefaultDialog(
+                onDismiss = { showLyricsAnimationStyleDialog = false },
+                buttons = {
+                    TextButton(
+                        onClick = {
+                            onEnhancedLyricsStyleChange(EnhancedLyricsStyle.ACCOMPANIST)
+                            showLyricsAnimationStyleDialog = false
+                        },
+                        shapes = ButtonDefaults.shapes(),
+                    ) {
+                        Text(stringResource(R.string.reset))
+                    }
+
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    TextButton(
+                        onClick = { showLyricsAnimationStyleDialog = false },
+                        shapes = ButtonDefaults.shapes(),
+                    ) {
+                        Text(stringResource(android.R.string.cancel))
+                    }
+                },
+            ) {
+                Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                    Text(
+                        text = stringResource(R.string.lyrics_animation_style),
+                        style = MaterialTheme.typography.headlineSmall,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                    EnhancedLyricsStyle.entries.forEach { style ->
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = style == enhancedLyricsStyle,
+                                onClick = {
+                                    onEnhancedLyricsStyleChange(style)
+                                    showLyricsAnimationStyleDialog = false
+                                },
+                            )
+                            Column(modifier = Modifier.padding(start = 8.dp)) {
+                                Text(text = style.displayName)
+                                Text(
+                                    text = stringResource(
+                                        if (style == EnhancedLyricsStyle.SPICY_MOBILE) {
+                                            R.string.lyrics_animation_style_spicy_description
+                                        } else {
+                                            R.string.lyrics_animation_style_accompanist_description
+                                        },
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         if (showLyricsTextSizeDialog) {
             var tempTextSize by remember { mutableFloatStateOf(lyricsTextSize) }
@@ -443,6 +515,16 @@ fun LyricsSettings(
 
             item {
                 PreferenceEntry(
+                    modifier = positions.modifierFor("lyrics_animation_style"),
+                    title = { Text(stringResource(R.string.lyrics_animation_style)) },
+                    description = enhancedLyricsStyle.displayName,
+                    icon = { Icon(painterResource(R.drawable.animation), null) },
+                    onClick = { showLyricsAnimationStyleDialog = true },
+                )
+            }
+
+            item {
+                PreferenceEntry(
                     modifier = positions.modifierFor("lyrics_line_spacing"),
                     title = { Text(stringResource(R.string.lyrics_line_spacing)) },
                     description = "${String.format("%.1f", lyricsLineSpacing)}x",
@@ -510,16 +592,25 @@ fun LyricsSettings(
 
 internal fun PreferredLyricsProvider.displayName(): String =
     when (this) {
-        PreferredLyricsProvider.LRCLIB -> "LrcLib"
-        PreferredLyricsProvider.KUGOU -> "KuGou"
+        PreferredLyricsProvider.LRC_RED -> "lrc.red"
+        PreferredLyricsProvider.BINI_LYRICS -> "BiniLyrics"
         PreferredLyricsProvider.BETTER_LYRICS -> "BetterLyrics"
         PreferredLyricsProvider.BETTER_LYRICS_PORTATO -> "BetterLyrics Portato"
+        PreferredLyricsProvider.PAXSENIX -> "PaxSenix (Apple Music)"
+        PreferredLyricsProvider.PAXSENIX_SPOTIFY -> "PaxSenix (Spotify)"
+        PreferredLyricsProvider.PAXSENIX_MUSIXMATCH -> "PaxSenix (Musixmatch)"
         PreferredLyricsProvider.YOULY_PLUS -> "YouLyPlus"
+        PreferredLyricsProvider.SIMP_MUSIC -> "SimpMusic"
 
         PreferredLyricsProvider.UNISON -> "Unison"
 
+        PreferredLyricsProvider.LRCLIB -> "LrcLib"
+        PreferredLyricsProvider.KUGOU -> "KuGou"
+        PreferredLyricsProvider.MEGALOBIZ -> "Megalobiz"
+
         PreferredLyricsProvider.APPLE_MUSIC -> "Apple Music (account)"
         PreferredLyricsProvider.MUSIXMATCH_EXPERIMENTAL -> "Musixmatch (experimental)"
+        PreferredLyricsProvider.GENIUS -> "Genius"
     }
 
 @Composable

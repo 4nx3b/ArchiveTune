@@ -11,6 +11,7 @@ import moe.rukamori.archivetune.constants.BIT_PERFECT_NATIVE_RATE_DEFAULT
 import moe.rukamori.archivetune.constants.BIT_PERFECT_OUTPUT_DEFAULT
 import moe.rukamori.archivetune.constants.BitPerfectNativeRateKey
 import moe.rukamori.archivetune.constants.BitPerfectOutputKey
+import moe.rukamori.archivetune.constants.DolbyFfmpegDecoderKey
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
 import moe.rukamori.archivetune.constants.ReplayGainModeKey
 import moe.rukamori.archivetune.constants.ReplayGainMode
@@ -57,7 +58,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.launch
+import androidx.datastore.preferences.core.edit
+import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AudioOffload
 import moe.rukamori.archivetune.constants.CrossfadeEnabledKey
@@ -73,6 +77,7 @@ import moe.rukamori.archivetune.ui.component.SettingsPageTopBar
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.constants.AutomixEnabledKey
@@ -119,6 +124,18 @@ fun AudiophileSettings(
             LastwaveAudioProcessingKey,
             defaultValue = false,
         )
+    val (dolbyFfmpegDecoder, onDolbyFfmpegDecoderChange) =
+        rememberPreference(
+            DolbyFfmpegDecoderKey,
+            defaultValue = false,
+        )
+
+    val ffmpegExtensionAvailable =
+        remember {
+            runCatching {
+                Class.forName("androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer")
+            }.isSuccess
+        }
 
     val (_, onAudioOffloadChange) =
         rememberPreference(
@@ -138,6 +155,35 @@ fun AudiophileSettings(
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    val onDolbyFfmpegDecoderChangeWithExclusions: (Boolean) -> Unit = { enabled ->
+        if (enabled) {
+            scope.launch {
+                context.dataStore.edit { prefs ->
+                    prefs[BitPerfectOutputKey] = false
+                    prefs[UsbExclusiveAudioKey] = false
+                    prefs[AudioOffload] = false
+                    prefs[DolbyFfmpegDecoderKey] = true
+                }
+            }
+        } else {
+            onDolbyFfmpegDecoderChange(false)
+        }
+    }
+    val onBitPerfectChangeWithExclusion: (Boolean) -> Unit = { enabled ->
+        if (enabled) {
+            // Bit-perfect bypass only engages while no engine or DSP runs
+            // (BitPerfectRuntime: `bypass = requested && !engineOrDspEngaged`), and
+            // normalization/ReplayGain are software gain that voids the unity-gain
+            // path — so enabling bit-perfect clears every incompatible toggle.
+            if (dolbyFfmpegDecoder) onDolbyFfmpegDecoderChange(false)
+            if (tryptifyAudioProcessing) onTryptifyAudioProcessingChange(false)
+            if (lastwaveAudioProcessing) onLastwaveAudioProcessingChange(false)
+            if (floatDsp) onFloatDspChange(false)
+            if (audioNormalization) onAudioNormalizationChange(false)
+        }
+        onBitPerfectChange(enabled)
+    }
     val tryptifyPrefs =
         remember(context) {
             tf.monochrome.android.data.preferences.PreferencesManager(context)
@@ -199,6 +245,7 @@ fun AudiophileSettings(
     }
 
     val headerHaze = rememberScreenHeaderHaze()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -235,13 +282,45 @@ fun AudiophileSettings(
             ) {
                 PreferenceGroup(title = stringResource(R.string.audiophile_engines_group)) {
                     item {
+                        Column(modifier = positions.modifierFor("dolby_ffmpeg_decoder")) {
+                            SwitchPreference(
+                                title = { Text(stringResource(R.string.dolby_ffmpeg_decoder)) },
+                                description =
+                                    if (ffmpegExtensionAvailable) {
+                                        stringResource(R.string.dolby_ffmpeg_decoder_desc)
+                                    } else {
+                                        stringResource(R.string.dolby_ffmpeg_decoder_unavailable)
+                                    },
+                                icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
+                                checked = dolbyFfmpegDecoder && ffmpegExtensionAvailable,
+                                onCheckedChange = onDolbyFfmpegDecoderChangeWithExclusions,
+                                isEnabled = ffmpegExtensionAvailable,
+                            )
+                            if (dolbyFfmpegDecoder && ffmpegExtensionAvailable) {
+                                Text(
+                                    text = stringResource(R.string.dolby_ffmpeg_decoder_active_note),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier =
+                                        Modifier.padding(
+                                            start = 56.dp,
+                                            top = 4.dp,
+                                            end = 16.dp,
+                                            bottom = 4.dp,
+                                        ),
+                                )
+                            }
+                        }
+                    }
+
+                    item {
                         Column(modifier = positions.modifierFor("bit_perfect_output")) {
                             SwitchPreference(
                                 title = { Text(stringResource(R.string.bit_perfect_output)) },
                                 description = stringResource(R.string.bit_perfect_output_desc),
                                 icon = { Icon(painterResource(R.drawable.solar_headphones), null) },
                                 checked = bitPerfect,
-                                onCheckedChange = onBitPerfectChange,
+                                onCheckedChange = onBitPerfectChangeWithExclusion,
                             )
 
                             if (bitPerfect) {
@@ -263,7 +342,15 @@ fun AudiophileSettings(
                                 description = stringResource(R.string.float_dsp_desc),
                                 icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
                                 checked = floatDsp,
-                                onCheckedChange = onFloatDspChange,
+                                onCheckedChange = { enabled ->
+                                    if (enabled && bitPerfect) {
+                                        // Float DSP engages the processor chain that
+                                        // disengages the bit-perfect bypass — they
+                                        // cannot both be active.
+                                        onBitPerfectChange(false)
+                                    }
+                                    onFloatDspChange(enabled)
+                                },
                             )
                         }
                     }
@@ -276,10 +363,16 @@ fun AudiophileSettings(
                                 icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
                                 checked = tryptifyAudioProcessing,
                                 onCheckedChange = { enabled ->
-                                    onTryptifyAudioProcessingChange(enabled)
                                     if (enabled) {
                                         onLastwaveAudioProcessingChange(false)
+                                        if (bitPerfect) {
+                                            // Engine routing replaces the stock DSP
+                                            // path and disengages the bit-perfect
+                                            // bypass (engineOrDspEngaged).
+                                            onBitPerfectChange(false)
+                                        }
                                     }
+                                    onTryptifyAudioProcessingChange(enabled)
                                 },
                             )
                         }
@@ -293,10 +386,13 @@ fun AudiophileSettings(
                                 icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
                                 checked = lastwaveAudioProcessing,
                                 onCheckedChange = { enabled ->
-                                    onLastwaveAudioProcessingChange(enabled)
                                     if (enabled) {
                                         onTryptifyAudioProcessingChange(false)
+                                        if (bitPerfect) {
+                                            onBitPerfectChange(false)
+                                        }
                                     }
+                                    onLastwaveAudioProcessingChange(enabled)
                                 },
                             )
                         }
@@ -416,6 +512,9 @@ fun AudiophileSettings(
                                 icon = { Icon(painterResource(R.drawable.solar_volume_up_linear), null) },
                                 checked = usbExclusiveAudio,
                                 onCheckedChange = { enabled ->
+                                    if (enabled && dolbyFfmpegDecoder) {
+                                        onDolbyFfmpegDecoderChange(false)
+                                    }
                                     onUsbExclusiveAudioChange(enabled)
                                     if (enabled) {
                                         onAudioOffloadChange(false)
@@ -435,7 +534,15 @@ fun AudiophileSettings(
                                 title = { Text(stringResource(R.string.audio_normalization)) },
                                 icon = { Icon(painterResource(R.drawable.solar_volume), null) },
                                 checked = audioNormalization,
-                                onCheckedChange = onAudioNormalizationChange,
+                                onCheckedChange = { enabled ->
+                                    if (enabled && bitPerfect) {
+                                        // Normalization is a software gain factor; the
+                                        // service forces unity gain while bit-perfect is
+                                        // verified, so the two are mutually exclusive.
+                                        onBitPerfectChange(false)
+                                    }
+                                    onAudioNormalizationChange(enabled)
+                                },
                             )
                         }
                     }
@@ -462,6 +569,12 @@ fun AudiophileSettings(
                     }
                 }
             }
+
+            ScreenHeaderHaze(
+                hazeState = headerHaze,
+                systemBarsTopPadding = systemBarsTopPadding,
+                scrolled = scrollState.value > 0,
+            )
         }
     }
 }

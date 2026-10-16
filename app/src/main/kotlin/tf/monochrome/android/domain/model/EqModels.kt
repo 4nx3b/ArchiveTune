@@ -78,7 +78,6 @@ data class AutoEqMeasurement(
 
 @Serializable
 enum class MeasurementRig(val label: String) {
-
     UPLOADED("Uploaded"),
     BK_5128("B&K 5128"),
     BK_4620("B&K 4620"),

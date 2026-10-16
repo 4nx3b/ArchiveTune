@@ -332,7 +332,7 @@ fun SpotifyPlaylistScreen(
             isSearching = false
             query = TextFieldValue()
         }
-    } else {
+    } else if (navController.previousBackStackEntry == null) {
         BackHandler {
             try {
                 if (!navController.popBackStack()) {
@@ -341,12 +341,6 @@ fun SpotifyPlaylistScreen(
                     }
                 }
             } catch (_: Exception) {
-                try {
-                    if (!navController.navigateUp()) {
-                        navController.navigate("library") { launchSingleTop = true }
-                    }
-                } catch (_: Exception) {
-                }
             }
         }
     }

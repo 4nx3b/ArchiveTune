@@ -44,7 +44,7 @@ if (localPropertiesFile.exists()) {
     localProperties.load(localPropertiesFile.inputStream())
 }
 
-val baseVersionName = "17.0"
+val baseVersionName = "18.0"
 val baseVersionCode = 1700
 
 val discordApplicationId =
@@ -212,6 +212,14 @@ android {
                     ?: ""
                 ).trim()
         buildConfigField("String", "NIGHTLY_BUILD_HASH", "\"$nightlyBuildHash\"")
+
+        val nightlyTag =
+            (
+                localProperties.getProperty("NIGHTLY_TAG")
+                    ?: System.getenv("NIGHTLY_TAG")
+                    ?: ""
+                ).trim()
+        buildConfigField("String", "NIGHTLY_TAG", "\"$nightlyTag\"")
 
         val isNightlyBuild =
             (System.getenv("IS_NIGHTLY_BUILD") ?: localProperties.getProperty("IS_NIGHTLY_BUILD") ?: "")
@@ -515,6 +523,14 @@ dependencies {
     implementation(libs.media3.okhttp)
     implementation("androidx.media3:media3-ui:${libs.versions.media3.get()}")
     implementation("androidx.media3:media3-ui-compose:${libs.versions.media3.get()}")
+    // FFmpeg decoder extension (Dolby AC-4, DTS, ...): transitive media3
+    // artifacts from the dmt fork are excluded — the app's pinned media3
+    // stack provides those classes and stays authoritative.
+    implementation(libs.media3.decoder.ffmpeg) {
+        exclude(group = "androidx.media3", module = "media3-decoder")
+        exclude(group = "androidx.media3", module = "media3-common")
+        exclude(group = "androidx.media3", module = "media3-exoplayer")
+    }
     add("gmsImplementation", libs.media3.cast)
     add("gmsImplementation", libs.mediarouter)
     implementation(libs.squigglyslider)
@@ -529,7 +545,6 @@ dependencies {
     implementation(libs.liquid.glass)
 
     implementation(libs.hilt)
-    implementation(libs.re2j)
     annotationProcessor(libs.kotlin.metadata.jvm)
     ksp(libs.hilt.compiler)
     ksp(libs.kotlin.metadata.jvm)

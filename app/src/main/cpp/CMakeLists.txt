@@ -20,9 +20,10 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ---------------------------------------------------------------------------
-# archivetune_dsp: the 32-bit float DSP chain + the AAudio exclusive output
-# (USB-direct float playback). The same conventions apply (16KB pages,
-# -fexceptions for the JNI bad_alloc guards, no -ffast-math).
+# archivetune_dsp: the 32-bit float DSP chain + the Oboe exclusive float
+# output (USB-direct playback, bit-perfect/native-rate path). The same
+# conventions apply (16KB pages, -fexceptions for the JNI bad_alloc guards,
+# no -ffast-math).
 # ---------------------------------------------------------------------------
 add_library(archivetune_dsp SHARED
     ${ARCHIVETUNE_NATIVE_DIR}/dsp/float_dsp.cpp
@@ -38,7 +39,8 @@ target_include_directories(archivetune_dsp PRIVATE
 target_compile_options(archivetune_dsp PRIVATE -O3 -fvisibility=hidden -fexceptions)
 
 find_library(log-lib-dsp log)
-target_link_libraries(archivetune_dsp ${log-lib-dsp} aaudio)
+find_package(oboe REQUIRED CONFIG)
+target_link_libraries(archivetune_dsp ${log-lib-dsp} oboe::oboe)
 
 target_link_options(archivetune_dsp PRIVATE "-Wl,-z,max-page-size=16384")
 

@@ -166,7 +166,6 @@ fun HeadphoneSelectScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-
                 val uploadedRig = MeasurementRig.UPLOADED
                 if (uploadedHeadphones.isNotEmpty()) {
                     item(key = "rig_uploaded") {
@@ -217,7 +216,6 @@ fun HeadphoneSelectScreen(
             autoFocus = false,
         ) { searchTopInset ->
         Column(modifier = Modifier.fillMaxSize()) {
-
         val listTopInset = if (error.isNullOrEmpty()) searchTopInset else 0.dp
 
         if (!error.isNullOrEmpty()) {
@@ -340,9 +338,7 @@ fun HeadphoneSelectScreen(
 
     val toDelete = pendingDelete
     if (toDelete != null) {
-        // Unglassed: this dialog renders inside the glass menu's color scheme,
-        // whose container colors are near-transparent — re-applying the
-        // unglassed scheme gives the dialog a standard opaque container.
+
         UnglassedDialogTheme {
             AlertDialog(
                 onDismissRequest = { pendingDelete = null },

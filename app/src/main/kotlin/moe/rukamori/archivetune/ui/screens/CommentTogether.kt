@@ -672,6 +672,14 @@ fun CommentTogetherScreen(navController: NavController) {
                     )
                 }
 
+                AnimatedVisibility(
+                    visible = typingUsers.isNotEmpty(),
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut(),
+                ) {
+                    TypingIndicatorRow(typingUsers = typingUsers)
+                }
+
                 TelegramGlassComposer(
                     text = textInput,
                     onTextChange = { newText ->
@@ -694,14 +702,6 @@ fun CommentTogetherScreen(navController: NavController) {
                     scrim = chatWallpaperGlass.scrim,
                     contentColor = chatWallpaperGlass.contentColor,
                 )
-
-                AnimatedVisibility(
-                    visible = typingUsers.isNotEmpty(),
-                    enter = expandVertically() + fadeIn(),
-                    exit = shrinkVertically() + fadeOut(),
-                ) {
-                    TypingIndicatorRow(typingUsers = typingUsers)
-                }
             } else {
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),

@@ -48,7 +48,8 @@ sealed class Screens(
     )
 
     companion object {
-        val MainScreens = listOf(Home, Search, Library)
-        val TvMainScreens = listOf(Home, Search, Library)
+
+        val MainScreens: List<Screens> by lazy { listOf(Home, Search, Library) }
+        val TvMainScreens: List<Screens> by lazy { listOf(Home, Search, Library) }
     }
 }

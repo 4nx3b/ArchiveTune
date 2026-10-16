@@ -425,7 +425,6 @@ fun ListenTogetherSettings(
             .calculateBottomPadding()
 
     Box(modifier = Modifier.fillMaxSize()) {
-
     Box(
         modifier =
             Modifier

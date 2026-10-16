@@ -38,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.RadioButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableFloatStateOf
@@ -59,11 +60,9 @@ import androidx.navigation.NavController
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
-import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.constants.ArtistSeparatorsKey
-import moe.rukamori.archivetune.constants.ArtworkProviderOrderKey
 import moe.rukamori.archivetune.constants.AudioOffload
+import moe.rukamori.archivetune.constants.DolbyFfmpegDecoderKey
 import moe.rukamori.archivetune.constants.UsbExclusiveAudioKey
 import moe.rukamori.archivetune.constants.AutomixEnabledKey
 import moe.rukamori.archivetune.constants.AutomixPerformanceMode
@@ -73,7 +72,6 @@ import moe.rukamori.archivetune.constants.PreloadSongsCountKey
 import moe.rukamori.archivetune.constants.DEFAULT_PRELOAD_SONGS_COUNT
 import moe.rukamori.archivetune.constants.AutoSkipNextOnErrorKey
 import moe.rukamori.archivetune.constants.AutoStartOnBluetoothKey
-import moe.rukamori.archivetune.constants.CanvasResolverEndpointsKey
 import moe.rukamori.archivetune.constants.CrossfadeDurationKey
 import moe.rukamori.archivetune.constants.CrossfadeEnabledKey
 import moe.rukamori.archivetune.constants.CrossfadeGaplessKey
@@ -88,14 +86,12 @@ import moe.rukamori.archivetune.constants.PersistentQueueKey
 import moe.rukamori.archivetune.constants.SeekExtraSeconds
 import moe.rukamori.archivetune.constants.SkipSilenceKey
 import moe.rukamori.archivetune.constants.PreferredArtworkProvider
-import moe.rukamori.archivetune.constants.SpotifyCanvasKey
 import moe.rukamori.archivetune.constants.StopMusicOnTaskClearKey
 import moe.rukamori.archivetune.constants.SwipeToSongKey
 import moe.rukamori.archivetune.constants.SwipeSensitivityKey
 import moe.rukamori.archivetune.constants.SwipeThumbnailKey
-import moe.rukamori.archivetune.constants.deserializeArtworkProviderOrder
-import moe.rukamori.archivetune.constants.TidalArtworkFallbackEnabledKey
-import moe.rukamori.archivetune.constants.TidalEnabledKey
+import moe.rukamori.archivetune.constants.PlayerDesignStyle
+import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.WakelockKey
 import moe.rukamori.archivetune.ui.component.ArtistSeparatorsDialog
 import moe.rukamori.archivetune.ui.component.CrossfadeSliderPreference
@@ -110,11 +106,9 @@ import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SliderPreference
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.component.TagsManagementDialog
-import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
-import moe.rukamori.archivetune.utils.CanvasResolverEndpoints
-import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.rememberEnumPreference
+import moe.rukamori.archivetune.utils.rememberPreference
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import kotlin.math.roundToInt
@@ -134,6 +128,11 @@ import moe.rukamori.archivetune.ui.component.SettingsPageTopBar
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
+    val playerDesignStyle by rememberEnumPreference(
+        key = PlayerDesignStyleKey,
+        defaultValue = PlayerDesignStyle.V4,
+    )
+
     val (persistentQueue, onPersistentQueueChange) =
         rememberPreference(
             PersistentQueueKey,
@@ -158,6 +157,11 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
     val (_, onUsbExclusiveAudioChange) =
         rememberPreference(
             UsbExclusiveAudioKey,
+            defaultValue = false,
+        )
+    val (_, onDolbyFfmpegDecoderChange) =
+        rememberPreference(
+            DolbyFfmpegDecoderKey,
             defaultValue = false,
         )
     val (seekExtraSeconds, onSeekExtraSeconds) =
@@ -241,51 +245,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
             AutomixPerformanceModeKey,
             defaultValue = AutomixPerformanceMode.BALANCED,
         )
-
-    val (archiveTuneCanvasEnabled, onArchiveTuneCanvasEnabledChange) =
-        rememberPreference(
-            ArchiveTuneCanvasKey,
-            defaultValue = false,
-        )
-
-    val (spotifyCanvasEnabled, onSpotifyCanvasEnabledChange) =
-        rememberPreference(
-            SpotifyCanvasKey,
-            defaultValue = false,
-        )
-
-    val (albumCanvasEnabled, onAlbumCanvasEnabledChange) =
-        rememberPreference(
-            AlbumCanvasEnabledKey,
-            defaultValue = true,
-        )
-
-    val (canvasResolverEndpointsRaw, onCanvasResolverEndpointsChange) =
-        rememberPreference(
-            CanvasResolverEndpointsKey,
-            defaultValue = "",
-        )
-    val (tidalEnabled, _) =
-        rememberPreference(
-            TidalEnabledKey,
-            defaultValue = true,
-        )
-    val (tidalArtworkEnabled, onTidalArtworkEnabledChange) =
-        rememberPreference(
-            TidalArtworkFallbackEnabledKey,
-            defaultValue = false,
-        )
-
-    val (artworkProviderOrderStr, onArtworkProviderOrderStrChange) =
-        rememberPreference(
-            ArtworkProviderOrderKey,
-            defaultValue = "",
-        )
-    val artworkProviderOrder =
-        remember(artworkProviderOrderStr) {
-            deserializeArtworkProviderOrder(artworkProviderOrderStr)
-        }
-    var showArtworkProviderOrderDialog by remember { mutableStateOf(false) }
 
     val (artistSeparators, onArtistSeparatorsChange) =
         rememberPreference(
@@ -465,6 +424,14 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                                     onAudioOffloadChange(false)
 
                                     onAutomixEnabledChange(false)
+
+                                    // USB-exclusive engages only without crossfade
+                                    // (MusicService seeds `usbExclusiveRequested =
+                                    // usbExclusive && !crossfade && !automix && !offload`),
+                                    // and the Dolby FFmpeg decode path is mutually
+                                    // exclusive with it — clear both directions here.
+                                    onUsbExclusiveAudioChange(false)
+                                    onDolbyFfmpegDecoderChange(false)
                                 }
                                 onCrossfadeEnabledChange(enabled)
                             },
@@ -508,6 +475,9 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                                     onAudioOffloadChange(false)
 
                                     onCrossfadeEnabledChange(false)
+
+                                    onUsbExclusiveAudioChange(false)
+                                    onDolbyFfmpegDecoderChange(false)
                                 }
                                 onAutomixEnabledChange(enabled)
                             },
@@ -561,6 +531,7 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                                 onCrossfadeEnabledChange(false)
                                 onAutomixEnabledChange(false)
                                 onUsbExclusiveAudioChange(false)
+                                onDolbyFfmpegDecoderChange(false)
                             }
                         },
                     )
@@ -636,143 +607,13 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 title = stringResource(R.string.tidal_artwork),
             ) {
                 item {
-                    SwitchPreference(
-                        title = { Text(stringResource(R.string.archivetune_canvas)) },
-                        description = stringResource(R.string.archivetune_canvas_desc),
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.canvas_settings_title)) },
+                        description = stringResource(R.string.canvas_settings_entry_desc),
                         icon = { Icon(painterResource(R.drawable.motion_photos_on), null) },
-                        checked = archiveTuneCanvasEnabled,
-                        onCheckedChange = onArchiveTuneCanvasEnabledChange,
+                        onClick = { navController.navigate("settings/player/canvas") },
                     )
                 }
-
-                item {
-                    Column(modifier = positions.modifierFor("spotify_canvas")) {
-                        SwitchPreference(
-                            title = { Text(stringResource(R.string.spotify_canvas)) },
-                            description = stringResource(R.string.spotify_canvas_desc),
-                            icon = { Icon(painterResource(R.drawable.slow_motion_video), null) },
-                            checked = spotifyCanvasEnabled,
-                            onCheckedChange = onSpotifyCanvasEnabledChange,
-                        )
-                    }
-                }
-
-                item {
-                    SwitchPreference(
-                        modifier = positions.modifierFor("album_canvas_enabled"),
-                        title = { Text(stringResource(R.string.album_canvas_enabled)) },
-                        description = stringResource(R.string.album_canvas_enabled_desc),
-                        icon = { Icon(painterResource(R.drawable.album), null) },
-                        checked = albumCanvasEnabled,
-                        onCheckedChange = onAlbumCanvasEnabledChange,
-                    )
-                }
-
-                item(visible = spotifyCanvasEnabled) {
-                    var showCanvasResolversDialog by remember { mutableStateOf(false) }
-                    val configuredResolvers =
-                        remember(canvasResolverEndpointsRaw) {
-                            CanvasResolverEndpoints.parse(canvasResolverEndpointsRaw)
-                        }
-                    Column(modifier = positions.modifierFor("canvas_resolvers")) {
-                        PreferenceEntry(
-                            title = { Text(stringResource(R.string.canvas_resolvers)) },
-                            description =
-                                if (configuredResolvers.isEmpty()) {
-                                    stringResource(R.string.canvas_resolvers_none)
-                                } else {
-                                    stringResource(
-                                        R.string.canvas_resolvers_count,
-                                        configuredResolvers.size,
-                                    )
-                                },
-                            icon = { Icon(painterResource(R.drawable.solar_server_linear), null) },
-                            onClick = { showCanvasResolversDialog = true },
-                        )
-                    }
-                    if (showCanvasResolversDialog) {
-                        TextFieldDialog(
-                            onDismiss = { showCanvasResolversDialog = false },
-                            title = { Text(stringResource(R.string.canvas_resolvers)) },
-                            placeholder = {
-                                Text(stringResource(R.string.canvas_resolvers_description))
-                            },
-                            textFieldValue = canvasResolverEndpointsRaw,
-                            onTextFieldValueChange = onCanvasResolverEndpointsChange,
-                            singleLine = false,
-                            maxLines = 8,
-
-                            isInputValid = { true },
-                            onDone = { raw ->
-                                onCanvasResolverEndpointsChange(
-                                    CanvasResolverEndpoints.serialize(
-                                        CanvasResolverEndpoints.parse(raw),
-                                    ),
-                                )
-                            },
-                        )
-                    }
-                }
-
-                item {
-                    var showCanvasCheckDialog by remember { mutableStateOf(false) }
-                    Column(modifier = positions.modifierFor("canvas_check")) {
-                        PreferenceEntry(
-                            title = { Text(stringResource(R.string.canvas_check)) },
-                            description = stringResource(R.string.canvas_check_description),
-                            icon = { Icon(painterResource(R.drawable.solar_check_circle_linear), null) },
-                            onClick = { showCanvasCheckDialog = true },
-                        )
-                    }
-                    if (showCanvasCheckDialog) {
-                        CanvasCheckDialog(
-                            resolverEndpointsRaw = canvasResolverEndpointsRaw,
-                            onDismiss = { showCanvasCheckDialog = false },
-                        )
-                    }
-                }
-
-                item {
-                    Column(modifier = positions.modifierFor("tidal_artwork_fallback")) {
-                        SwitchPreference(
-                            title = { Text(stringResource(R.string.tidal_artwork_fallback)) },
-                            description =
-                                stringResource(
-                                    if (tidalEnabled) {
-                                        R.string.tidal_artwork_fallback_description
-                                    } else {
-                                        R.string.tidal_artwork_fallback_unavailable
-                                    },
-                                ),
-                            icon = { Icon(painterResource(R.drawable.image), null) },
-                            checked = tidalArtworkEnabled,
-                            onCheckedChange = onTidalArtworkEnabledChange,
-                            isEnabled = tidalEnabled,
-                        )
-                    }
-                }
-
-                item {
-                    Column(modifier = positions.modifierFor("artwork_priority")) {
-                        PreferenceEntry(
-                            title = { Text(stringResource(R.string.artwork_priority)) },
-                            description = artworkProviderOrder.firstOrNull()?.displayName(),
-                            icon = { Icon(painterResource(R.drawable.filter_alt), null) },
-                            onClick = { showArtworkProviderOrderDialog = true },
-                        )
-                    }
-                }
-            }
-
-            if (showArtworkProviderOrderDialog) {
-                ArtworkProviderOrderDialog(
-                    initialOrder = artworkProviderOrder,
-                    onDismiss = { showArtworkProviderOrderDialog = false },
-                    onConfirm = { newOrder ->
-                        onArtworkProviderOrderStrChange(newOrder.joinToString(",") { it.name })
-                        showArtworkProviderOrderDialog = false
-                    },
-                )
             }
 
             PreferenceGroup(

@@ -68,8 +68,7 @@ fun rememberThumbnailSwapState(
                         .diskCacheKey(url)
                         .diskCachePolicy(CachePolicy.ENABLED)
                         .networkCachePolicy(CachePolicy.ENABLED)
-                        .allowHardware(false)
-                        .size(1080)
+                        .size(64)
                         .build()
                 val result =
                     withContext(Dispatchers.IO) {

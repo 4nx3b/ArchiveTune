@@ -263,17 +263,33 @@ class AiIntegrationSettingsViewModel
         private suspend fun readConfig(): AiServiceConfig {
             val prefs = context.dataStore.data.first()
             val provider = prefs[AiProviderKey].toEnum(AiProvider.NONE)
-            val model =
+            var apiKey = prefs[AiApiKeyKey].orEmpty()
+            var customEndpoint = prefs[AiCustomEndpointKey].orEmpty()
+            var model =
                 if (provider == AiProvider.CUSTOM) {
                     prefs[AiCustomModelKey].orEmpty()
                 } else {
                     prefs[AiSelectedModelKey].orEmpty()
                 }
+            var deepLFormality = "default"
+            when (provider) {
+                AiProvider.DEEPL -> {
+                    apiKey = apiKey.ifBlank { prefs[moe.rukamori.archivetune.constants.DeeplApiKeyKey].orEmpty() }
+                    deepLFormality = prefs[moe.rukamori.archivetune.constants.DeeplFormalityKey].orEmpty().ifBlank { "default" }
+                }
+                AiProvider.OPENROUTER -> {
+                    apiKey = apiKey.ifBlank { prefs[moe.rukamori.archivetune.constants.OpenRouterApiKeyKey].orEmpty() }
+                    customEndpoint = customEndpoint.ifBlank { prefs[moe.rukamori.archivetune.constants.OpenRouterBaseUrlKey].orEmpty() }
+                    model = model.ifBlank { prefs[moe.rukamori.archivetune.constants.OpenRouterModelKey].orEmpty() }
+                }
+                else -> {}
+            }
             return AiServiceConfig(
                 provider = provider,
-                apiKey = prefs[AiApiKeyKey].orEmpty(),
-                customEndpoint = prefs[AiCustomEndpointKey].orEmpty(),
+                apiKey = apiKey,
+                customEndpoint = customEndpoint,
                 model = model,
+                deepLFormality = deepLFormality,
             )
         }
 

@@ -72,6 +72,18 @@ fun resetAuthWebViewSession(
     }
 }
 
+fun WebView.releaseAuthWebView(
+    javascriptInterface: String? = null,
+    beforeDestroy: ((WebView) -> Unit)? = null,
+) {
+    beforeDestroy?.invoke(this)
+    if (javascriptInterface != null) {
+        removeJavascriptInterface(javascriptInterface)
+    }
+    stopLoading()
+    destroy()
+}
+
 private fun clearWebAuthStorage(context: Context) {
     val appContext = context.applicationContext
     WebStorage.getInstance().deleteAllData()

@@ -44,7 +44,6 @@ data class DacInfo(
         fun fromDevice(device: UsbDevice): DacInfo? {
             if (device == null) return null
             val serial: String? = try {
-
                 device.serialNumber
             } catch (_: SecurityException) {
                 null

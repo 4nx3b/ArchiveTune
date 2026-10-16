@@ -75,6 +75,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.MaxCanvasCacheSizeKey
 import moe.rukamori.archivetune.constants.MaxImageCacheSizeKey
 import moe.rukamori.archivetune.constants.MaxSongCacheSizeKey
+import moe.rukamori.archivetune.constants.MaxVideoCacheSizeKey
 import moe.rukamori.archivetune.constants.SmartTrimmerKey
 import moe.rukamori.archivetune.extensions.directorySizeBytes
 import moe.rukamori.archivetune.extensions.tryOrNull
@@ -164,6 +165,10 @@ fun StorageSettings(
         remember {
             listOf(0, 64, 128, 256, 512, 1024, 2048, 4096, 8192, -1)
         }
+    val videoCacheSizeValues =
+        remember {
+            listOf(0, 128, 256, 512, 1024, 2048, 4096, -1)
+        }
 
     val (smartTrimmer, onSmartTrimmerChange) =
         rememberPreference(
@@ -185,14 +190,21 @@ fun StorageSettings(
             key = MaxCanvasCacheSizeKey,
             defaultValue = 256,
         )
+    val (maxVideoCacheSize, onMaxVideoCacheSizeChange) =
+        rememberPreference(
+            key = MaxVideoCacheSizeKey,
+            defaultValue = 512,
+        )
     var clearCacheDialog by remember { mutableStateOf(false) }
     var clearImageCacheDialog by remember { mutableStateOf(false) }
     var clearCanvasCacheDialog by remember { mutableStateOf(false) }
+    var clearVideoCacheDialog by remember { mutableStateOf(false) }
     var clearLyricsCacheDialog by remember { mutableStateOf(false) }
     var imageCacheSize by remember { mutableLongStateOf(0L) }
     var playerCacheSize by remember { mutableLongStateOf(0L) }
     var downloadCacheSize by remember { mutableLongStateOf(0L) }
     var canvasCacheBytes by remember { mutableLongStateOf(0L) }
+    var videoCacheBytes by remember { mutableLongStateOf(0L) }
     val isCacheClearInProgress =
         (screenState as? StorageSettingsScreenState.Success)
             ?.model
@@ -237,6 +249,16 @@ fun StorageSettings(
                 0f
             },
         label = "canvasCacheProgress",
+    )
+    val videoCacheProgress by animateFloatAsState(
+        targetValue =
+            if (maxVideoCacheSize > 0) {
+                val maxVideoCacheSizeBytes = cacheSizeMegabytesToBytes(maxVideoCacheSize)
+                (videoCacheBytes.toFloat() / maxVideoCacheSizeBytes).coerceIn(0f, 1f)
+            } else {
+                0f
+            },
+        label = "videoCacheProgress",
     )
     val isSmartTrimmerAvailable = maxImageCacheSize != 0 || maxSongCacheSize != 0
 
@@ -299,6 +321,25 @@ fun StorageSettings(
                     CanvasArtworkPlaybackCache.byteSize()
                 }
             delay(StorageRefreshIntervalMillis)
+        }
+    }
+    val videoCacheDir =
+        remember(context) {
+            StorageLocationRepository.cacheDirectory(context, StorageFolderKind.VIDEO_CACHE)
+        }
+    LaunchedEffect(videoCacheDir, isCacheClearInProgress) {
+        if (isCacheClearInProgress) return@LaunchedEffect
+        while (isActive) {
+            videoCacheBytes =
+                withContext(Dispatchers.IO) {
+                    videoCacheDir.directorySizeBytes()
+                }
+            delay(StorageRefreshIntervalMillis)
+        }
+    }
+    LaunchedEffect(maxVideoCacheSize) {
+        if (maxVideoCacheSize == 0) {
+            viewModel.clearVideoCache(showFeedback = false)
         }
     }
 
@@ -568,6 +609,77 @@ fun StorageSettings(
             }
 
             PreferenceGroup(
+                modifier = positions.modifierFor("video_cache"),
+                title = stringResource(R.string.video_cache),
+            ) {
+                item {
+                    ListPreference(
+                        modifier = positions.modifierFor("max_video_cache_size"),
+                        title = { Text(stringResource(R.string.max_video_cache_size)) },
+                        description =
+                            when {
+                                maxVideoCacheSize < 0 -> {
+                                    stringResource(R.string.size_used, formatFileSize(videoCacheBytes))
+                                }
+
+                                maxVideoCacheSize > 0 -> {
+                                    stringResource(
+                                        R.string.storage_size_ratio,
+                                        formatFileSize(videoCacheBytes),
+                                        formatFileSize(cacheSizeMegabytesToBytes(maxVideoCacheSize)),
+                                    )
+                                }
+
+                                else -> {
+                                    stringResource(R.string.disable)
+                                }
+                            },
+                        icon = {
+                            Icon(
+                                painter = painterResource(R.drawable.play),
+                                contentDescription = null,
+                            )
+                        },
+                        selectedValue = maxVideoCacheSize,
+                        values = videoCacheSizeValues,
+                        valueText = {
+                            when (it) {
+                                0 -> stringResource(R.string.disable)
+                                -1 -> stringResource(R.string.unlimited)
+                                else -> formatFileSize(cacheSizeMegabytesToBytes(it))
+                            }
+                        },
+                        onValueSelected = onMaxVideoCacheSizeChange,
+                    )
+                }
+                item(visible = maxVideoCacheSize > 0) {
+                    CacheUsagePreference(progress = videoCacheProgress)
+                }
+                item {
+                    PreferenceEntry(
+                        modifier = positions.modifierFor("clear_video_cache"),
+                        title = { Text(stringResource(R.string.clear_video_cache)) },
+                        onClick = { clearVideoCacheDialog = true },
+                    )
+                }
+            }
+
+            if (clearVideoCacheDialog) {
+                ActionPromptDialog(
+                    title = stringResource(R.string.clear_video_cache),
+                    onDismiss = { clearVideoCacheDialog = false },
+                    onConfirm = {
+                        viewModel.clearVideoCache()
+                        clearVideoCacheDialog = false
+                    },
+                    onCancel = { clearVideoCacheDialog = false },
+                    content = {
+                        Text(text = stringResource(R.string.clear_video_cache_dialog))
+                    },
+                )
+            }
+
+            PreferenceGroup(
                 modifier = positions.modifierFor("lyrics_cache"),
                 title = stringResource(R.string.lyrics),
             ) {
@@ -770,6 +882,7 @@ private fun StorageCacheClearProgressDialog(cacheClear: StorageCacheClearUiModel
             StorageCacheClearUiKind.DOWNLOADS -> stringResource(R.string.storage_clear_downloads_progress, cacheClear.percent)
             StorageCacheClearUiKind.IMAGES -> stringResource(R.string.storage_clear_image_cache_progress, cacheClear.percent)
             StorageCacheClearUiKind.CANVAS -> stringResource(R.string.storage_clear_canvas_cache_progress, cacheClear.percent)
+            StorageCacheClearUiKind.VIDEO -> stringResource(R.string.storage_clear_video_cache_progress, cacheClear.percent)
         }
 
     BasicAlertDialog(

@@ -51,13 +51,7 @@ class EqViewModel @Inject constructor(
     private val headphoneRepository: HeadphoneRepository,
     private val preferences: PreferencesManager
 ) : ViewModel() {
-    // MUST run before the _availableTargets/_selectedTarget property
-    // initializers below: FrequencyTargets loads its bundled target curves
-    // lazily from assets, and without an application context every curve
-    // parsed to an empty list - which made every AutoEQ fit abort with
-    // "Target curve not available" and left the whole Tryptify EQ page
-    // without usable bands. Property initializers execute in declaration
-    // order, so this init block (declared first) wins the race.
+
     init {
         FrequencyTargets.init(appContext)
     }
@@ -268,7 +262,6 @@ class EqViewModel @Inject constructor(
             val presetId = preferences.eqActivePresetId.first()
 
             if (presetId != null) {
-
                 val preset = eqRepository.getPresetById(presetId)
                     ?: withTimeoutOrNull(PRESET_RESTORE_WAIT_MS) {
                         eqRepository.getPresetByIdFlow(presetId).filterNotNull().first()
@@ -448,7 +441,6 @@ class EqViewModel @Inject constructor(
                     preferences.setEqStereoMode(true)
                 }
             } else if (_stereoMode.value && _currentBandsR.value.isNotEmpty()) {
-
                 _currentBandsR.value = preset.bands
                 saveBandsRToPreferences(preset.bands)
             }
@@ -487,7 +479,6 @@ class EqViewModel @Inject constructor(
     }
 
     fun setPreamp(preamp: Float) {
-
         if (_autoPreamp.value) return
 
         val peakL = _currentBands.value.maxOfOrNull { kotlin.math.abs(it.gain) } ?: 0f
@@ -518,7 +509,6 @@ class EqViewModel @Inject constructor(
     fun setStereoMode(enabled: Boolean) {
         _stereoMode.value = enabled
         if (enabled && _currentBandsR.value.isEmpty() && _currentBands.value.isNotEmpty()) {
-
             _currentBandsR.value = _currentBands.value
             saveBandsRToPreferences(_currentBands.value)
         }
@@ -623,7 +613,6 @@ class EqViewModel @Inject constructor(
     )
 
     private fun applyAutoPreamp(src: PreampSources) {
-
         val toneBands = src.tone.toBands()
 
         val peakL = combinedPeakBoostDb(src.bandsL + toneBands, MODEL_SAMPLE_RATE)
@@ -727,7 +716,6 @@ class EqViewModel @Inject constructor(
         val primary = left ?: right ?: return
         viewModelScope.launch {
             try {
-
                 val bandsL = primary.bands.mapIndexed { i, b -> b.copy(id = i) }
                 val bandsR = if (left != null && right != null) {
                     right.bands.mapIndexed { i, b -> b.copy(id = i) }
@@ -764,7 +752,6 @@ class EqViewModel @Inject constructor(
                             preferences.setEqStereoMode(true)
                         }
                     } else if (_stereoMode.value && _currentBandsR.value.isNotEmpty()) {
-
                         _currentBandsR.value = bandsL
                         saveBandsRToPreferences(bandsL)
                     }
@@ -989,7 +976,6 @@ class EqViewModel @Inject constructor(
 
         val target = _selectedTarget.value.data
         if (target.isEmpty()) {
-
             _error.value = "Target curve not available"
             return true
         }
@@ -1060,7 +1046,6 @@ class EqViewModel @Inject constructor(
                     ?.data
                     ?: emptyList()
             } else {
-
                 val csvData = if (measurement.target == "squiglink") {
                     val want = if (channel == EqChannel.RIGHT) "R" else "L"
                     val other = if (channel == EqChannel.RIGHT) "L" else "R"
@@ -1275,7 +1260,6 @@ class EqViewModel @Inject constructor(
 
                 if (channel == EqChannel.RIGHT) {
                     if (!_stereoMode.value) {
-
                         _stereoMode.value = true
                         preferences.setEqStereoMode(true)
                     }

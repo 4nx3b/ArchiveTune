@@ -181,7 +181,6 @@ inline fun ListItem(
                 .then(
                     if (isActive && showActiveContainer) {
                         if (activeContainerBackdrop) {
-
                             Modifier
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(
@@ -473,35 +472,6 @@ fun ArtistListItem(
         )
     },
     trailingContent = trailingContent,
-    modifier = modifier,
-)
-
-@Composable
-fun ArtistGridItem(
-    artist: Artist,
-    modifier: Modifier = Modifier,
-    badges: @Composable RowScope.() -> Unit = {
-        if (artist.artist.bookmarkedAt != null) {
-            Icon.Favorite()
-        }
-    },
-    fillMaxWidth: Boolean = false,
-) = GridItem(
-    title = artist.artist.name,
-    subtitle = pluralStringResource(R.plurals.n_song, artist.songCount, artist.songCount),
-    badges = badges,
-    thumbnailContent = {
-        ItemThumbnail(
-            thumbnailUrl = artist.artist.thumbnailUrl,
-            isActive = false,
-            isPlaying = false,
-            shape = RoundedCornerShape(GridThumbnailCornerRadius),
-            contentScale = ContentScale.Crop,
-            maxSizePx = 544,
-            modifier = Modifier.fillMaxSize(),
-        )
-    },
-    fillMaxWidth = fillMaxWidth,
     modifier = modifier,
 )
 
@@ -1581,19 +1551,17 @@ fun SwipeToSongBox(
                 ),
     ) {
         if (offset.value != 0f) {
-            val (iconRes, bg, tint, align) =
+            val (iconRes, tint, align) =
                 if (offset.value > 0) {
-                    Quadruple(
+                    Triple(
                         R.drawable.playlist_play,
                         MaterialTheme.colorScheme.secondary,
-                        MaterialTheme.colorScheme.onSecondary,
                         Alignment.CenterStart,
                     )
                 } else {
-                    Quadruple(
+                    Triple(
                         R.drawable.queue_music,
                         MaterialTheme.colorScheme.primary,
-                        MaterialTheme.colorScheme.onPrimary,
                         Alignment.CenterEnd,
                     )
                 }
@@ -1603,8 +1571,7 @@ fun SwipeToSongBox(
                     Modifier
                         .fillMaxWidth()
                         .height(60.dp)
-                        .align(Alignment.Center)
-                        .background(bg),
+                        .align(Alignment.Center),
                 contentAlignment = align,
             ) {
                 Icon(
@@ -1628,7 +1595,13 @@ fun SwipeToSongBox(
                         translationX = offset.value
                     }
                     .fillMaxWidth()
-                    .background(resolvedContentBackgroundColor),
+                    .then(
+                        if (offset.value != 0f) {
+                            Modifier.background(resolvedContentBackgroundColor)
+                        } else {
+                            Modifier
+                        },
+                    ),
             content = content,
         )
     }
@@ -1646,13 +1619,6 @@ private fun reset(
         ) { value, _ -> offset.value = value }
     }
 }
-
-data class Quadruple<A, B, C, D>(
-    val first: A,
-    val second: B,
-    val third: C,
-    val fourth: D,
-)
 
 private object Icon {
     @Composable

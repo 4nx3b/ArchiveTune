@@ -290,6 +290,13 @@ ArchiveTune is made possible by the work of many open-source projects and commun
 - **Muzo** by [Shashwat-CODING](https://github.com/Shashwat-CODING/Muzo) for the fonts API, Spotify Canvas, and Qobuz backup, as well as design inspiration.
 - **BitChord** by [kushagrasinghx](https://github.com/kushagrasinghx/BitChord) for the player style and the automix concept that inspired ArchiveTune's clean-room Kotlin automix engine.
 - [BetterLyrics](https://better-lyrics.boidu.dev/) for word-by-word lyrics, unison and artwork provider support.
+- **AURALIS** by [Rueded](https://github.com/Rueded/AURALIS) for the Acoustic Quality Audit — the Spek spectrogram analysis that verifies lossless files.
+- **Flamingo** for the complete player that replaced the Apple Music style — NowPlaying layout, karaoke lyrics and the floating-light background.
+- **MetroFusePlus** for the SoundCloud streaming source.
+- **Stopify** for the experimental Spotify direct-streaming pipeline.
+- **dmt** for the Dolby / FFmpeg decoder integration.
+- **SukiSU-Ultra** for the liquid-glass navigation bar design.
+- [Accompanist lyrics](https://github.com/mocharealm/accompanist) for the karaoke accompaniment (background-vocal) lyric rendering.
 - [Material Color Utilities](https://github.com/material-foundation/material-color-utilities)
 - [Read You](https://github.com/Ashinch/ReadYou) and [Seal](https://github.com/JunkFood02/Seal) for UI component inspiration.
 - Translators, beta testers, contributors, and community members who continue to support the project.

@@ -107,7 +107,6 @@ class MixBusProcessor @Inject constructor(
         blockSize = clamped
         val ptr = enginePtr
         if (ptr != 0L && inputFormat != AudioFormat.NOT_SET) {
-
             nativeReconfigure(ptr, inputFormat.sampleRate, MAX_BLOCK_SIZE)
         }
     }
@@ -118,7 +117,6 @@ class MixBusProcessor @Inject constructor(
             throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
         }
         if (inputAudioFormat.channelCount > 2) {
-
             pendingFormat = AudioFormat.NOT_SET
             inputFormat = AudioFormat.NOT_SET
             return AudioFormat.NOT_SET
@@ -140,7 +138,6 @@ class MixBusProcessor @Inject constructor(
         pendingFormat != AudioFormat.NOT_SET || inputFormat != AudioFormat.NOT_SET
 
     override fun queueInput(inputBuffer: ByteBuffer) {
-
         if (bypassed || enginePtr == 0L) {
             val size = inputBuffer.remaining()
 
@@ -291,7 +288,6 @@ class MixBusProcessor @Inject constructor(
             if (enginePtr == 0L) {
                 enginePtr = nativeCreate(inputFormat.sampleRate, MAX_BLOCK_SIZE)
             } else {
-
                 nativeReconfigure(enginePtr, inputFormat.sampleRate, MAX_BLOCK_SIZE)
             }
 

@@ -375,6 +375,7 @@ fun AppleMusicQueueSheet(
             }
         }
 
+        Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             state = lazyListState,
             contentPadding = PaddingValues(bottom = 16.dp, top = 4.dp),
@@ -439,7 +440,7 @@ fun AppleMusicQueueSheet(
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         IconButton(
                                             onClick = {
-                                                menuState.show {
+                                                menuState.showImmersive {
                                                     PlayerMenu(
                                                         mediaMetadata = metadata,
                                                         navController = navController,
@@ -534,6 +535,8 @@ fun AppleMusicQueueSheet(
                 }
             }
         }
+        }
+
     }
 
     if (showSleepTimerDialog) {

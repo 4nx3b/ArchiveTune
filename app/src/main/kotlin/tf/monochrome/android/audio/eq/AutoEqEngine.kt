@@ -190,7 +190,6 @@ object AutoEqEngine {
         val bands = mutableListOf<EqBand>()
 
         if (algorithm == AutoEqAlgorithm.SHELF_ENDS) {
-
             fitEndShelf(
                 error, FilterType.LOWSHELF,
                 corner = 105f, regionLo = minFrequency, regionHi = 105f,

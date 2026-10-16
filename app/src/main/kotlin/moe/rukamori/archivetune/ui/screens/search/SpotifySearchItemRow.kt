@@ -20,6 +20,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ListThumbnailSize
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadius
 import moe.rukamori.archivetune.spotify.SpotifySearchItem
+import moe.rukamori.archivetune.spotify.models.SpotifyImage
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
 import moe.rukamori.archivetune.spotify.models.SpotifyAlbum
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
@@ -55,7 +56,7 @@ internal fun SpotifySearchItemRow(
             SpotifyCatalogRow(
                 title = album.name,
                 subtitle = albumSubtitle(album),
-                thumbnailUrl = album.images.firstOrNull()?.url,
+                thumbnailUrl = album.images.widestUrl(),
                 modifier = modifier,
                 trailingContent = trailingContent,
             )
@@ -66,7 +67,7 @@ internal fun SpotifySearchItemRow(
             SpotifyCatalogRow(
                 title = artist.name,
                 subtitle = stringResource(R.string.artist_subtitle),
-                thumbnailUrl = artist.images.firstOrNull()?.url,
+                thumbnailUrl = artist.images.widestUrl(),
                 modifier = modifier,
                 trailingContent = trailingContent,
             )
@@ -77,7 +78,7 @@ internal fun SpotifySearchItemRow(
             SpotifyCatalogRow(
                 title = playlist.name,
                 subtitle = playlistSubtitle(playlist),
-                thumbnailUrl = playlist.images.firstOrNull()?.url,
+                thumbnailUrl = playlist.images.widestUrl(),
                 modifier = modifier,
                 trailingContent = trailingContent,
             )
@@ -122,6 +123,9 @@ private fun SpotifyProviderIcon() {
         modifier = Modifier.size(18.dp),
     )
 }
+
+private fun List<SpotifyImage>.widestUrl(): String? =
+    maxByOrNull { it.width ?: 0 }?.url?.takeIf(String::isNotBlank)
 
 private fun albumSubtitle(album: SpotifyAlbum): String? =
     joinByBullet(

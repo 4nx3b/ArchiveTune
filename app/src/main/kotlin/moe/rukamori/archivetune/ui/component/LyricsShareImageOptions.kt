@@ -10,6 +10,16 @@ package moe.rukamori.archivetune.ui.component
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Immutable
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.lyrics.LyricsEntry
+import moe.rukamori.archivetune.lyrics.LyricsUtils
+
+fun LyricsEntry.toLyricsShareLine(): LyricsShareLine =
+    LyricsShareLine(
+        text = text,
+        translation = LyricsUtils.providedTranslationTextForEntry(this),
+        romanisation = providerRomanizedText?.trim()?.takeIf { it.isNotEmpty() }
+            ?: romanizedTextFlow.value?.trim()?.takeIf { it.isNotEmpty() },
+    )
 
 enum class LyricsShareAspectRatio(
     @StringRes val labelRes: Int,
@@ -55,6 +65,10 @@ data class LyricsShareImageOptions(
     val showArtwork: Boolean = true,
 
     val vinylMode: Boolean = false,
+
+    val showTranslation: Boolean = false,
+
+    val showRomanisation: Boolean = false,
 ) {
     val sanitizedBlurRadius: Float
         get() = blurRadius.coerceIn(0f, 48f)
@@ -84,8 +98,50 @@ enum class LyricsShareStyle(
 }
 
 @Immutable
+data class LyricsShareLine(
+    val text: String,
+    val translation: String? = null,
+    val romanisation: String? = null,
+)
+
+@Immutable
 data class LyricsSharePayload(
     val lyricsText: String,
     val songTitle: String,
     val artists: String,
-)
+    val lines: List<LyricsShareLine> = emptyList(),
+) {
+    val hasTranslation: Boolean
+        get() = lines.any { !it.translation.isNullOrBlank() }
+
+    val hasRomanisation: Boolean
+        get() = lines.any { !it.romanisation.isNullOrBlank() }
+
+    fun shareDisplayText(
+        showTranslation: Boolean,
+        showRomanisation: Boolean,
+    ): Pair<String, Set<Int>> {
+        if (lines.isEmpty()) return lyricsText to emptySet()
+        val builder = StringBuilder()
+        val romanisedLineIndices = mutableSetOf<Int>()
+        var lineIndex = 0
+        var wroteAny = false
+        for (line in lines) {
+            fun appendLine(content: String, romanised: Boolean) {
+                val trimmed = content.trim()
+                if (trimmed.isEmpty()) return
+                if (wroteAny) {
+                    builder.append('\n')
+                    lineIndex++
+                }
+                if (romanised) romanisedLineIndices += lineIndex
+                builder.append(trimmed)
+                wroteAny = true
+            }
+            appendLine(line.text, romanised = false)
+            if (showTranslation) line.translation?.let { appendLine(it, romanised = false) }
+            if (showRomanisation) line.romanisation?.let { appendLine(it, romanised = true) }
+        }
+        return builder.toString() to romanisedLineIndices
+    }
+}

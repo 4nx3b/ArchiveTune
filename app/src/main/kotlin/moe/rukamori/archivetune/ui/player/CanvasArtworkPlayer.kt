@@ -11,7 +11,6 @@ package moe.rukamori.archivetune.ui.player
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -19,10 +18,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.platform.LocalContext
@@ -35,6 +34,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.cache.Cache
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -43,9 +43,10 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.compose.ContentFrame
+import androidx.media3.ui.compose.PlayerSurface
 import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
 import dagger.hilt.android.EntryPointAccessors
+import android.content.Context
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import moe.rukamori.archivetune.di.CanvasCacheEntryPoint
@@ -83,6 +84,77 @@ class CanvasLoopSync {
     var leaderPositionMs: Long = Long.MIN_VALUE
 }
 
+private val CanvasPlaybackHttpClient: OkHttpClient by lazy {
+    OkHttpClient
+        .Builder()
+        .proxy(YouTube.streamOkHttpProxy)
+        .addInterceptor { chain ->
+            val request = chain.request()
+            val host = request.url.host
+            val isYouTubeMediaHost =
+                host.endsWith("googlevideo.com") ||
+                    host.endsWith("googleusercontent.com") ||
+                    host.endsWith("youtube.com") ||
+                    host.endsWith("youtube-nocookie.com") ||
+                    host.endsWith("ytimg.com")
+
+            if (!isYouTubeMediaHost) {
+                return@addInterceptor chain.proceed(
+                    request
+                        .newBuilder()
+                        .header("User-Agent", CanvasPlaybackUserAgent)
+                        .build(),
+                )
+            }
+
+            val requestProfile = StreamClientUtils.resolveRequestProfile(request.url)
+            chain.proceed(
+                StreamClientUtils
+                    .applyRequestProfile(
+                        request.newBuilder(),
+                        requestProfile,
+                    ).build(),
+            )
+        }.build()
+}
+
+private class CanvasPlaybackFactories(
+    val mediaSourceFactory: DefaultMediaSourceFactory,
+    val renderersFactory: DefaultRenderersFactory,
+)
+
+private object CanvasPlaybackFactoriesHolder {
+    @Volatile
+    private var instance: CanvasPlaybackFactories? = null
+
+    fun obtain(
+        context: Context,
+        playerCache: Cache,
+    ): CanvasPlaybackFactories = instance ?: synchronized(this) {
+        instance ?: create(context.applicationContext, playerCache).also { instance = it }
+    }
+
+    private fun create(
+        context: Context,
+        playerCache: Cache,
+    ): CanvasPlaybackFactories {
+        val upstreamFactory =
+            DefaultDataSource.Factory(
+                context,
+                OkHttpDataSource.Factory(CanvasPlaybackHttpClient),
+            )
+        val cacheFactory =
+            CacheDataSource.Factory()
+                .setCache(playerCache)
+                .setUpstreamDataSourceFactory(upstreamFactory)
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+        return CanvasPlaybackFactories(
+            mediaSourceFactory = DefaultMediaSourceFactory(cacheFactory),
+            renderersFactory = DefaultRenderersFactory(context).setEnableDecoderFallback(true),
+        )
+    }
+}
+
 @Composable
 fun CanvasArtworkPlayer(
     primaryUrl: String?,
@@ -92,6 +164,8 @@ fun CanvasArtworkPlayer(
     resizeMode: Int = AspectRatioFrameLayout.RESIZE_MODE_FIT,
 
     visible: Boolean = true,
+
+    videoAlpha: Float = 1f,
 
     maxVideoEdgePx: Int? = null,
 
@@ -135,41 +209,6 @@ fun CanvasArtworkPlayer(
     }
     val effectiveContentVisible = contentVisible && !surfaceCycleActive
 
-    val okHttpClient =
-        remember {
-            OkHttpClient
-                .Builder()
-                .proxy(YouTube.streamOkHttpProxy)
-                .addInterceptor { chain ->
-                    val request = chain.request()
-                    val host = request.url.host
-                    val isYouTubeMediaHost =
-                        host.endsWith("googlevideo.com") ||
-                            host.endsWith("googleusercontent.com") ||
-                            host.endsWith("youtube.com") ||
-                            host.endsWith("youtube-nocookie.com") ||
-                            host.endsWith("ytimg.com")
-
-                    if (!isYouTubeMediaHost) {
-                        return@addInterceptor chain.proceed(
-                            request
-                                .newBuilder()
-                                .header("User-Agent", CanvasPlaybackUserAgent)
-                                .build(),
-                        )
-                    }
-
-                    val requestProfile = StreamClientUtils.resolveRequestProfile(request.url)
-                    chain.proceed(
-                        StreamClientUtils
-                            .applyRequestProfile(
-                                request.newBuilder(),
-                                requestProfile,
-                            ).build(),
-                    )
-                }.build()
-        }
-
     val playerCache =
         remember {
             val entryPoint =
@@ -179,24 +218,11 @@ fun CanvasArtworkPlayer(
                 )
             entryPoint.playerCache()
         }
-    val mediaSourceFactory =
-        remember(okHttpClient, playerCache) {
-            val upstreamFactory =
-                DefaultDataSource.Factory(
-                    context,
-                    OkHttpDataSource.Factory(okHttpClient),
-                )
-            val cacheFactory =
-                CacheDataSource.Factory()
-                    .setCache(playerCache)
-                    .setUpstreamDataSourceFactory(upstreamFactory)
-                    .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-            DefaultMediaSourceFactory(cacheFactory)
-        }
-    val renderersFactory =
-        remember(context) {
-            DefaultRenderersFactory(context).setEnableDecoderFallback(true)
-        }
+    val canvasFactories = remember(playerCache) {
+        CanvasPlaybackFactoriesHolder.obtain(context, playerCache)
+    }
+    val mediaSourceFactory = canvasFactories.mediaSourceFactory
+    val renderersFactory = canvasFactories.renderersFactory
     val exoPlayer =
         remember(mediaSourceFactory, renderersFactory, maxVideoEdgePx) {
             val trackSelector =
@@ -336,7 +362,6 @@ fun CanvasArtworkPlayer(
             if (stalledForMs >= CanvasPlaybackStallTimeoutMs) {
                 currentUrl = fallback
                 isVideoReady = false
-                reportAvailability?.invoke(false)
                 return@LaunchedEffect
             }
 
@@ -355,8 +380,8 @@ fun CanvasArtworkPlayer(
                     exoPlayer.setCanvasPlayback(shouldPlay)
                 }
                 if (event == Lifecycle.Event.ON_STOP) {
-                    runCatching { exoPlayer.setVideoSurface(null) }
-                    runCatching { exoPlayer.stop() }
+
+                    runCatching { exoPlayer.pause() }
                 }
             }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -439,7 +464,7 @@ fun CanvasArtworkPlayer(
                                 target != Long.MIN_VALUE &&
                                 loopSyncFollower.leaderSource == currentUrl &&
                                 kotlin.math.abs(newPosition.positionMs - target) >
-                                    CanvasSyncRateLockThresholdMs
+                                    CanvasSyncSeekThresholdMs
                             ) {
                                 exoPlayer.seekTo(target.coerceAtLeast(0L))
                             }
@@ -508,32 +533,45 @@ fun CanvasArtworkPlayer(
         label = "canvasAlpha",
     )
 
+    val surfaceRetireAlpha by animateFloatAsState(
+        targetValue = if (effectiveContentVisible) 1f else 0f,
+        animationSpec = tween(durationMillis = 150),
+        label = "canvasSurfaceRetireAlpha",
+    )
+    var surfaceStructureReleased by remember { mutableStateOf(false) }
+    LaunchedEffect(effectiveContentVisible) {
+        if (effectiveContentVisible) {
+            surfaceStructureReleased = false
+        } else {
+            delay(CanvasSurfaceRetireFadeMs)
+            surfaceStructureReleased = true
+        }
+    }
+    val surfaceAlpha = alpha * surfaceRetireAlpha * videoAlpha
+
     val aspect = videoDisplayAspectRatio
-    if (effectiveContentVisible) {
+    if (effectiveContentVisible || !surfaceStructureReleased) {
         if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM && aspect != null && aspect > 0f) {
             Box(modifier = modifier.clipToBounds()) {
-                ContentFrame(
+                PlayerSurface(
                     player = exoPlayer,
                     surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
-                    contentScale = resizeMode.toContentScale(),
-                    keepContentOnReset = false,
-                    shutter = {},
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .alpha(alpha)
-                            .canvasCoverLayout(aspect),
+                    modifier = Modifier
+                        .matchParentSize()
+                        .alpha(surfaceAlpha)
+                        .canvasCoverLayout(aspect),
                 )
             }
         } else {
-            ContentFrame(
-                player = exoPlayer,
-                surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
-                contentScale = resizeMode.toContentScale(),
-                keepContentOnReset = false,
-                shutter = {},
-                modifier = modifier.alpha(alpha),
-            )
+            Box(modifier = modifier.clipToBounds()) {
+                PlayerSurface(
+                    player = exoPlayer,
+                    surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+                    modifier = Modifier
+                        .matchParentSize()
+                        .alpha(surfaceAlpha),
+                )
+            }
         }
     }
 }
@@ -572,20 +610,6 @@ private fun Modifier.canvasCoverLayout(videoAspect: Float): Modifier =
         }
     }
 
-private fun Int.toContentScale(): ContentScale =
-    when (this) {
-        AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> ContentScale.Crop
-
-        AspectRatioFrameLayout.RESIZE_MODE_FILL -> ContentScale.FillBounds
-
-        AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH,
-        AspectRatioFrameLayout.RESIZE_MODE_FIXED_HEIGHT,
-        AspectRatioFrameLayout.RESIZE_MODE_FIT,
-        -> ContentScale.Fit
-
-        else -> ContentScale.Fit
-    }
-
 private fun ExoPlayer.setCanvasPlayback(isPlaying: Boolean) {
     if (isPlaying) {
         if (playbackState == Player.STATE_ENDED) seekTo(0)
@@ -597,5 +621,6 @@ private fun ExoPlayer.setCanvasPlayback(isPlaying: Boolean) {
 }
 
 private const val CanvasPlaybackLogTag = "CanvasPlayback"
+private const val CanvasSurfaceRetireFadeMs = 150L
 private const val CanvasPlaybackUserAgent =
     "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Mobile Safari/537.36"

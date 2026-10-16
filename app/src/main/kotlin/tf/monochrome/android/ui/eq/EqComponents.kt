@@ -123,10 +123,7 @@ fun ParameterDropdown(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            // Unglassed: the floating menu panel renders inside the glass
-            // menu's color scheme, whose container colors are near-transparent
-            // — re-applying the unglassed scheme keeps the panel opaque and
-            // readable.
+
             UnglassedDialogTheme {
                 DropdownMenu(
                     expanded = expanded,
