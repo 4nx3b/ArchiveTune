@@ -5741,3 +5741,20 @@ Work Log:
 
 Stage Summary:
 - Task 126 complete on dev: all six reports fixed at the root. CI ALL GREEN (8/8) at 061ebaaf7; canary N202610141420 (17.0.6778-061ebaaf7). On-device verification pending user testing.
+
+---
+Task ID: 127 (dependency audit, 2026-11-08)
+Agent: Hoplite
+
+Task: Audit dependencies and remove only declarations proven unused.
+
+Work Log:
+- Inspected Gradle manifests, the shared version catalog, initialized submodules, source imports, runtime loading, and the vendored npm manifest/lockfile.
+- Removed `implementation(libs.ktor.client.okhttp)` from `shazamkit/build.gradle.kts`: Shazam's only client explicitly constructs `HttpClient(CIO)` (Shazam.kt), and the module has no OkHttp imports, reflection, or service-loader selection. Retained its CIO dependency and all other modules' OkHttp declarations.
+- Retained runtime/tooling dependencies and dependencies consumed by submodules: for example, SquigglySlider is imported under `me.saket.squiggles`, and morideobfuscator uses Bouncy Castle for PGP verification.
+- No Gradle dependency locks or dependency-locking configuration exist. The only lockfile is the vendored libusb WebUSB test shim's `package-lock.json`; its `usb` dependency is used by `index.js`, and root manifest/lockfile dependencies match, so no lockfile change is warranted.
+- Updated AGENTS.md with the CIO engine and lockfile constraints.
+- Validation: `git diff --check` passed; Python TOML parsing, CIO declaration/source assertions, and npm manifest/lockfile consistency checks passed. No local compilation, per repository policy. Build, unit tests, and Android lint are delegated to the existing pull-request CI workflow on the task branch, rather than pushing directly to dev.
+
+Stage Summary:
+- One proven-unused module dependency declaration removed, with no dependency upgrades or submodule pointer changes. Full build/test/lint results pending CI at publication.

@@ -88,6 +88,7 @@ here must preserve the invariants below.
 
 ## Dependency gotchas
 
+- `:shazamkit` explicitly uses `HttpClient(CIO)`; it needs `ktor-client-cio`, not a second OkHttp engine. Other modules still use OkHttp. Gradle dependency locking is not configured; the only npm lockfile belongs to the vendored libusb WebUSB test shim, whose `usb` dependency is imported by `index.js`.
 - `settings.gradle.kts` declares a GCS mirror of Maven Central **before** `mavenCentral()` — do not reorder (Maven Central 429-rate-limits CI).
 - JitPack is scoped via `exclusiveContent` to an allow-list of `com.github.*` groups (TeamNewPipe, tdlibx, PRDownloader, jaudiotagger, MetrolistGroup…). A new `com.github.*` dependency fails until its group is added.
 - The embedded Python/yt-dlp layer (Chaquopy) was removed on 2026-08-26: YouTube stream resolution is native-only via the compiled InnerTube core (`NativeStreamRepository` + BotGuard/QuickJS PO tokens). Upstream still carries Chaquopy — expect merge conflicts in `app/build.gradle.kts`, `gradle/libs.versions.toml`, and `playback/stream/*` on sync; resolve them by keeping the fork's native-only shape.
