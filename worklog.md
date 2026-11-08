@@ -5775,4 +5775,4 @@ Work Log:
 - Validation: `git diff --check` passed; Python TOML parsing, CIO declaration/source assertions, and npm manifest/lockfile consistency checks passed. No local compilation, per repository policy. Build, unit tests, and Android lint are delegated to the existing pull-request CI workflow on the task branch, rather than pushing directly to dev.
 
 Stage Summary:
-- One proven-unused module dependency declaration removed, with no dependency upgrades or submodule pointer changes. Full build/test/lint results pending CI at publication.
+- One proven-unused module dependency declaration removed, with no dependency upgrades or submodule pointer changes. PR #229 preserves the current dev worklog update and is mergeable. GitHub Actions produced no PR checks; a manual `build.yml` dispatch was rejected with HTTP 422: "Actions has been disabled for this repository." Compilation, unit tests, and lint remain unverified; local compilation is forbidden by repository policy.
