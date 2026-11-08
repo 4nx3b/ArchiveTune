@@ -96,6 +96,10 @@ here must preserve the invariants below.
 
 `.github/workflows/upstream-sync.yml` merges hourly via `scripts/upstream_sync.sh` + `scripts/ai_resolve.py`, following these invariants. If you change a fork feature or protected file, update the invariants in **both** this file and the script's verification section.
 
+## Settings search
+
+- Preserve Unicode letters, combining marks, and numbers in queries and indexed text; keep English synonyms and punctuation separation intact.
+
 ## Agent hygiene
 
 - Never commit credentials, tokens, keystores or agent session state (`.swarm/`, `.opencode/`, `.jcode/` stay untracked).

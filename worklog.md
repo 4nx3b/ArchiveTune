@@ -5753,7 +5753,7 @@ Work Log:
 - Found settings search normalized text with an ASCII-only expression, erasing Japanese, Chinese, Cyrillic, and other localized queries before matching.
 - Preserve Unicode letters, combining marks, and numbers while retaining separator handling and English synonyms.
 - Added regression coverage for localized titles, mixed-script distinctions, localized child navigation, English synonyms/case/separators, and empty queries.
-- Verification: diff whitespace check passed. Native UI verification is unavailable here: no Android device/emulator or built APK is present; inferred Preview targets the separate Go Listen Together backend, not the Android UI. No local compilation, per repository policy; PR CI provides build, unit-test, and lint verification.
+- Verification: diff whitespace and repository Kotlin delimiter checks passed. Native UI verification is unavailable here: no Android device/emulator or built APK is present; inferred Preview targets the separate Go Listen Together backend, not the Android UI. No local compilation, per repository policy; PR CI provides build, unit-test, and lint verification.
 
 Stage Summary:
 - Focused localization/search fix with regression tests. Native interaction verification remains pending on an Android device.
