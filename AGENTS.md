@@ -98,5 +98,7 @@ here must preserve the invariants below.
 
 ## Agent hygiene
 
+- Settings search preserves Unicode letters, combining marks, and numbers in queries and indexed text; keep English synonyms and punctuation separation intact.
+
 - Never commit credentials, tokens, keystores or agent session state (`.swarm/`, `.opencode/`, `.jcode/` stay untracked).
 - Local working notes (`ARCHIVETUNE_SESSION_NOTES.md`, `ARCHIVETUNE_CODE_MAP.md`) are scratch memory — never ship them.
