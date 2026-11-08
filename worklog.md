@@ -5759,3 +5759,20 @@ Work Log:
 
 Stage Summary:
 - Translations complete on the translate branch, canary port pool branch deleted, ArchiveTune 18.0 shipped: main at the merge commit, release workflow building the signed APKs and creating the v18.0 tag + "ArchiveTune 18.0" GitHub release with the 18.0 notes and full changelog.
+
+---
+Task ID: 128 (dependency audit, 2026-11-08)
+Agent: Hoplite
+
+Task: Audit dependencies and remove only declarations proven unused.
+
+Work Log:
+- Inspected Gradle manifests, the shared version catalog, initialized submodules, source imports, runtime loading, and the vendored npm manifest/lockfile.
+- Removed `implementation(libs.ktor.client.okhttp)` from `shazamkit/build.gradle.kts`: Shazam's only client explicitly constructs `HttpClient(CIO)` (Shazam.kt), and the module has no OkHttp imports, reflection, or service-loader selection. Retained its CIO dependency and all other modules' OkHttp declarations.
+- Retained runtime/tooling dependencies and dependencies consumed by submodules: for example, SquigglySlider is imported under `me.saket.squiggles`, and morideobfuscator uses Bouncy Castle for PGP verification.
+- No Gradle dependency locks or dependency-locking configuration exist. The only lockfile is the vendored libusb WebUSB test shim's `package-lock.json`; its `usb` dependency is used by `index.js`, and root manifest/lockfile dependencies match, so no lockfile change is warranted.
+- Updated AGENTS.md with the CIO engine and lockfile constraints.
+- Validation: `git diff --check` passed; Python TOML parsing, CIO declaration/source assertions, and npm manifest/lockfile consistency checks passed. No local compilation, per repository policy. Build, unit tests, and Android lint are delegated to the existing pull-request CI workflow on the task branch, rather than pushing directly to dev.
+
+Stage Summary:
+- One proven-unused module dependency declaration removed, with no dependency upgrades or submodule pointer changes. PR #229 preserves the current dev worklog update and is mergeable. GitHub Actions produced no PR checks; a manual `build.yml` dispatch was rejected with HTTP 422: "Actions has been disabled for this repository." Compilation, unit tests, and lint remain unverified; local compilation is forbidden by repository policy.
