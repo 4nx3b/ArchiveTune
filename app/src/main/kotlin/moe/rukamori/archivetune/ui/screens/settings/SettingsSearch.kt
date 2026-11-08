@@ -8,7 +8,7 @@
 package moe.rukamori.archivetune.ui.screens.settings
 
 internal object SettingsSearch {
-    private val SEPARATOR_REGEX = Regex("[^a-z0-9]+")
+    private val SEPARATOR_REGEX = Regex("[^\\p{L}\\p{M}\\p{N}]+")
 
     private val SYNONYMS: Map<String, List<String>> =
         mapOf(
