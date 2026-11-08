@@ -5741,3 +5741,20 @@ Work Log:
 
 Stage Summary:
 - Task 126 complete on dev: all six reports fixed at the root. CI ALL GREEN (8/8) at 061ebaaf7; canary N202610141420 (17.0.6778-061ebaaf7). On-device verification pending user testing.
+
+
+---
+Task ID: 127
+Agent: Hoplite
+Task: Add focused coverage for high-risk untested production paths.
+
+Work Log:
+- Compared existing app unit tests with production playback resumption and audio-source deadline, FLAC, and ReplayGain helpers and their callers.
+- Prioritized queue restoration and source cancellation/deadline behavior: regressions can replace the live queue, lose the saved playback position, stall fallback, or continue work after playback cancellation.
+- Added PlaybackResumptionPlannerTest for saved-queue restoration, preview-to-playback expansion, live-queue precedence, empty queues, and invalid indices/positions.
+- Added AudioSourceAttemptDeadlineTest for nested time budgets, timeout cleanup, scope restoration across exceptions/suspension, caller cancellation, HTTP call timeouts, and timeout-versus-cancellation classification.
+- Tests use existing JUnit/coroutines-test dependencies, injected clocks, and unexecuted HTTP calls; no production behavior, build configuration, or dependencies changed.
+- Verification: git diff --check passed. Per repository policy, no local compilation; unit execution is delegated to the existing Build Pull Request CI workflow on the task branch rather than writing the shared dev branch.
+
+Stage Summary:
+- Added 19 focused JVM tests in two files; updated test guidance in AGENTS.md. CI results are recorded in the pull request and task report.
