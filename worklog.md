@@ -5741,3 +5741,19 @@ Work Log:
 
 Stage Summary:
 - Task 126 complete on dev: all six reports fixed at the root. CI ALL GREEN (8/8) at 061ebaaf7; canary N202610141420 (17.0.6778-061ebaaf7). On-device verification pending user testing.
+
+
+---
+Task ID: 127
+Agent: Hoplite
+Task: Audit main user flows and fix verified UX papercuts
+
+Work Log:
+- Audited search submission, localized settings search, and library text-dialog entry points without changing playback or navigation contracts.
+- Found settings search normalized text with an ASCII-only expression, erasing Japanese, Chinese, Cyrillic, and other localized queries before matching.
+- Preserve Unicode letters, combining marks, and numbers while retaining separator handling and English synonyms.
+- Added regression coverage for localized titles, mixed-script distinctions, localized child navigation, English synonyms/case/separators, and empty queries.
+- Verification: diff whitespace and repository Kotlin delimiter checks passed. Native UI verification is unavailable here: no Android device/emulator or built APK is present; inferred Preview targets the separate Go Listen Together backend, not the Android UI. No local compilation, per repository policy; PR CI provides build, unit-test, and lint verification.
+
+Stage Summary:
+- Focused localization/search fix with regression tests. Native interaction verification remains pending on an Android device.
