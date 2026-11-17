@@ -85,6 +85,8 @@ here must preserve the invariants below.
 - Flavor matrix: gms/foss × mobile/tv × universal/arm64/x86_64. Debug check: `./gradlew assembleGmsMobileUniversalDebug`.
 - Fork contract tests (palette/crossfade/artwork/multi-source/presence/telegram — sources in `app/src/test/`): `./gradlew :app:testGmsMobileUniversalDebugUnitTest`. Run after any merge or feature change.
 - Keep the GPL header banner on new `.kt` files. No formatter task — match surrounding style.
+- Playback resumption has direct JVM coverage in `PlaybackResumptionPlannerTest`: saved-queue restoration, controller preview expansion, live-queue precedence, and invalid index/position handling. Keep these tests independent of Android and external services.
+- Audio-source deadline tests use injected monotonic clocks and coroutine virtual time to cover nested budgets, cancellation, scope cleanup, and HTTP timeout classification without contacting providers.
 
 ## Dependency gotchas
 
